@@ -1,91 +1,92 @@
-# Intended Repository Layout
+# PRISMA-PI App Repository Layout
 
-**Status:** proposed layout before implementation
+**Status:** partially implemented infrastructure layout
 
-The repository should separate product/domain logic from platform adapters and presentation so Android-first work does not make iOS a rewrite.
+The repository separates product/domain logic from platform adapters and presentation so Android-first work does not make iOS a rewrite.
 
 ```text
 prisma-pi-app/
 ├── README.md
 ├── docs/
 │   ├── architecture/
+│   ├── accounts/
+│   ├── connectivity/
+│   ├── decisions/
+│   ├── media/
 │   ├── protocol/
 │   ├── storage/
-│   └── decisions/
-├── app/
-│   ├── lib/
-│   │   ├── application/
-│   │   ├── presentation/
-│   │   ├── navigation/
-│   │   └── bootstrap/
-│   ├── android/
-│   └── ios/
+│   ├── testing/
+│   └── validation/
+├── app/                         # production app shell intentionally not started
 ├── packages/
-│   ├── prisma_domain/
-│   ├── prisma_protocol/
-│   ├── prisma_connectors/
-│   ├── prisma_storage/
-│   ├── prisma_processing_graph/
-│   ├── prisma_skin/
-│   └── prisma_test_support/
-├── native/
+│   ├── prisma_domain/           # implemented
+│   ├── prisma_connector/        # implemented
+│   ├── prisma_security/         # implemented contract
+│   ├── prisma_storage/          # implemented runtime + SQLite metadata
+│   ├── prisma_media_runtime/    # implemented contract
+│   └── prisma_mock_appliance/   # implemented test server
+├── spikes/
+│   └── android_flutter/         # disposable M0 Flutter/Kotlin validation host
+├── native/                      # reserved for production native media backends
 │   ├── android_media/
 │   └── ios_media/
-├── tools/
-│   ├── mock_appliance/
-│   └── fixtures/
-└── tests/
-    ├── contract/
-    ├── integration/
-    └── media/
+├── tools/                       # future developer tooling/fixtures
+└── tests/                       # future cross-package integration suites
 ```
+
+The earlier conceptual packages `prisma_protocol` and `prisma_processing_graph` have not been split into separate packages yet. Their platform-neutral contracts currently live in `prisma_domain` until a split is justified by implementation boundaries rather than by directory design alone.
 
 ## Ownership rules
 
 ### `prisma_domain`
 
-Owns platform-neutral state, commands, events, capabilities, device/session descriptors, project models and validation rules.
+Owns platform-neutral synthesizer state, commands, events, device/capability descriptors, Protocol 2.0 envelope models, processing-graph contracts, account identity and entitlement contracts.
 
-It imports no Android/iOS/network/filesystem implementation packages.
+It imports no Android/iOS implementation package.
 
-### `prisma_protocol`
+### `prisma_connector`
 
-Owns Protocol 2.0 envelopes, serializers, error model, version negotiation and synchronization state machine.
-
-### `prisma_connectors`
-
-Owns connector interfaces and connection lifecycle. Concrete adapters may live in subpackages/modules:
+Owns connector interfaces and connection/session lifecycle. Current concrete/reference adapters include:
 
 ```text
-LanConnector
+Protocol2LanConnector
 LegacyEsp32Connector
-UsbConnector (future)
 MockConnector
 ```
 
+Future transports such as USB must implement the same application-facing connector boundary.
+
+### `prisma_security`
+
+Owns appliance trust-state, security-profile selection and secure credential/pairing adapter contracts. It does not contain Google account identity or store licensing logic.
+
 ### `prisma_storage`
 
-Owns repository interfaces and transactional storage semantics. Platform filesystem/SQLite details remain adapters.
+Owns managed-library layout, transactional import semantics, integrity hashing, recovery, metadata repository interfaces and the current SQLite metadata implementation.
 
-### `prisma_processing_graph`
+Platform-owned media bytes can enter through a materialization callback without moving full payloads through the application/UI layer.
 
-Owns graph/nodes/ordering/execution-target contracts. It does not own a specific GPU API.
+### `prisma_media_runtime`
 
-### `prisma_skin`
+Owns platform-neutral local image/video runtime lifecycle and capability contracts. It does not own Android/iOS decoder implementations and never makes raw frame buffers a Dart/domain contract.
 
-Owns design-token schema, skin package validation and semantic token lookup. Skins do not contain executable feature code.
+### `prisma_mock_appliance`
+
+Reference device implementation for Protocol 2.0/connector integration tests. It can simulate disconnects, generation gaps, transient failures, latency and media-endpoint behavior.
+
+### `spikes/android_flutter`
+
+Disposable M0 validation host. It is allowed to use Flutter/Kotlin diagnostic controls, Android NSD, Keystore, SAF and media APIs because its purpose is to prove platform boundaries before ADR-001 is accepted.
+
+Code here is not automatically production application code.
 
 ### `native/android_media`
 
-Owns Android-specific media acceleration/backends only. Candidate technologies must be validated by spikes before freezing the implementation stack.
+Reserved production Android media backend. Candidate APIs must be validated by the M0 spike before this directory becomes the production implementation.
 
 ### `native/ios_media`
 
 Equivalent iOS media backend when the iOS phase starts.
-
-### `mock_appliance`
-
-Reference device implementation for protocol/connector integration tests. It must be able to simulate disconnects, generation gaps, capability differences, file failures and media endpoint changes.
 
 ## Dependency direction
 
@@ -94,19 +95,20 @@ Presentation
      ↓
 Application
      ↓
-Domain contracts
-  ↙      ↘
-Ports   Protocol models
+Domain / runtime contracts
+  ↙        ↘
+Ports     protocol models
   ↑
 Adapters / platform implementations
 ```
 
-Platform SDK objects must not cross into domain contracts.
+Platform SDK objects must not cross into domain contracts. Platform-specific paths/URIs may exist only as ephemeral adapter/runtime locators; portable project state stores logical IDs.
 
 ## Test placement
 
-- pure domain tests stay close to package code;
-- protocol contract tests exercise serialized fixtures;
-- connector integration tests use Mock Appliance;
-- media tests use deterministic fixtures;
-- physical appliance tests are tracked separately from automated simulation results.
+- pure package tests stay next to package code;
+- protocol/connector integration tests use Mock Appliance;
+- storage tests use temporary filesystems + SQLite;
+- Android stack compilation/runtime probes live under `spikes/android_flutter`;
+- future deterministic media fixtures belong under `tests/media` or `tools/fixtures` once sustained playback tests exist;
+- physical Android/ESP32 evidence is tracked separately from automated simulation results.
