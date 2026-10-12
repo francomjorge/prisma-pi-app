@@ -56,10 +56,11 @@ A later status includes evidence from previous stages only when that evidence ac
 | Account vs appliance trust separation | DESIGNED | Cloud identity and local appliance pairing are separate trust domains. |
 | Local image decode | BUILT_SPIKE | Target-sized native still-image decode/render path compiles with modern `ImageDecoder` plus `BitmapFactory` fallback. Physical format/performance validation pending. |
 | Local looping video decode | BUILT_SPIKE | Media3 repeat/seek-capable local-video path and explicit player disposal compile into the Android APK. Sustained physical playback validation pending. |
-| Android GPU texture video path | BUILT_SPIKE | Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → GLSL pass-through compiles in CI; actual frame delivery, copy behavior, memory and thermal characteristics require hardware validation. |
+| Android GPU texture video path | BUILT_SPIKE | Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → GLSL compiles with neutral processing-plan input. Actual frame delivery, copy behavior, memory and thermal characteristics require hardware validation. |
 | Media endpoint negotiation | PARTIAL_IMPLEMENTATION | Endpoint model, Protocol 2.0 decode and session acquisition implemented; platform media transport selection/runtime pending. |
-| Processing graph | IMPLEMENTED_CONTRACT | Ordered node model exists in domain package; processor runtime not implemented. |
-| GPU processing stage | PROOF_BOUNDARY_ONLY | OES/GLSL insertion point now compiles but the shader is pass-through; no production FX node execution is claimed yet. |
+| Processing graph contract | STATICALLY_VERIFIED | Ordered authoritative `ProcessingGraph`, node reorder semantics and execution-target contracts pass domain tests. |
+| Processing runtime adapter | STATICALLY_VERIFIED | `prisma_processing_runtime` compiles MOBILE/BOTH graph nodes into deterministic schema-v1 plans, enforces capabilities/node limits and defines opaque backend session contracts without platform SDK types. |
+| GPU processing stage | BUILT_SPIKE | Android M0 consumes the neutral plan and maps diagnostic `POSTER` / `GRAYSCALE` nodes into the OES/GLSL stage. APK build is verified; physical frame execution and multi-pass chaining are not. |
 | Skin/token system | DESIGNED | Contract defined; schema implementation pending. |
 | Input/keyboard action layer | PARTIAL_IMPLEMENTATION | M0 spike includes keyboard/native bridge diagnostics; product action layer pending. |
 | Android app shell | BUILT_SPIKE | Diagnostic M0 Flutter/Kotlin shell builds as debug APK; product UI remains blocked. |
@@ -69,44 +70,48 @@ A later status includes evidence from previous stages only when that evidence ac
 
 ## Validation evidence
 
-Latest fully recorded green foundation gate:
+Latest fully green code + integration gate:
 
 ```text
-74e4c8d6ad9584ae997f849782ce60a957840fef
-foundation-validation run #216 / 38269436921
+7545dee1564bf2613a7136d94fc30c4176f94a18
+foundation-validation run #234 / 38274554710
 ```
 
-All seven jobs passed on that exact head:
+All eight jobs passed on that exact head:
 
 ```text
 domain
 security-contracts
 storage-runtime
 media-runtime-contract
+processing-runtime
 connector-session
 network-protocol-integration
 android-stack-spike
 ```
 
-This gate covers durable SQLite tests, local-media contracts, aspect/resolution policy, resource ownership, Android managed-media source compilation, Media3 playback-surface compilation and the SurfaceTexture/OES GPU-path debug APK build.
+This gate covers durable SQLite tests, local-media contracts, aspect/resolution policy, resource ownership, the neutral processing compiler/adapter contracts, Android managed-media source compilation, Media3 playback, SurfaceTexture/OES processing-plan integration, diagnostic POSTER/GRAYSCALE shader mapping and the complete debug APK build.
 
-This is not physical Android or ESP32 evidence. Android NSD/Keystore/ContentResolver/media behavior, SurfaceTexture frame delivery and the Legacy ESP32 connector still require target-hardware validation.
+The next commit only records this evidence/documentation; its current CI run does not extend the implementation evidence above.
 
-CI concurrency cancels obsolete in-progress PR runs so only the newest revision matters.
+This is not physical Android or ESP32 evidence. Android NSD/Keystore/ContentResolver/media behavior, actual OES frame delivery through POSTER/GRAYSCALE, GPU copy behavior and the Legacy ESP32 connector still require target-hardware validation.
+
+CI concurrency cancels obsolete in-progress PR runs so only the newest revision matters for branch health, while recorded evidence remains tied to the exact validated commit.
 
 ## Next coherent work packages
 
-1. add one deliberately simple diagnostic GPU shader effect (grayscale/posterize) to prove decoder → OES texture → PRISMA shader → render target without CPU readback;
-2. define the PRISMA-owned GPU processing-node adapter so Core/application code never depends directly on OpenGL ES, Vulkan or Media3;
-3. run Android M0 on a physical device and validate `NsdManager`, local-network permission behavior, Keystore round-trip/restart, keyboard input, ContentResolver imports, SQLite restart persistence and native media probing;
-4. validate target-sized image rendering and the Media3/OES path under portrait/landscape/extreme aspect ratios;
-5. stress repeated video/image source switching and release/reopen cycles while recording Java/native memory, decoder count, render-surface count and dropped frames;
-6. run a sustained 30+ minute loop plus background/foreground and rotation cycles; record thermal and memory behavior;
+1. implement a diagnostic ordered multi-pass Android GPU chain using native ping-pong render targets (`OES input → FBO A → node 1 → FBO B → node 2 → output`) without exposing GL texture/FBO identifiers to Dart/domain code;
+2. prove two nodes execute in `ProcessingPlan` order, graph reorder changes execution order, and bypass removes one pass deterministically;
+3. extend native diagnostic resource accounting to intermediate textures/framebuffers and prove plan replacement/release returns ownership to baseline;
+4. run Android M0 on a physical device and validate Media3 → OES frame delivery, POSTER/GRAYSCALE visual output, `NsdManager`, local-network permission behavior, Keystore restart behavior, keyboard input, ContentResolver imports and SQLite persistence;
+5. stress repeated image/video source switching and processing-plan recreation while recording Java/native/GPU memory, decoder/surface counts and dropped frames;
+6. run a sustained 30+ minute processed-video loop plus background/foreground and rotation cycles; record thermal and memory behavior;
 7. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
-8. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
-9. implement account backend API skeleton and signed offline-entitlement proof;
-10. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
-11. only then begin production UI composition.
+8. align production parameter semantics for PIXEL/GLITCH/POSTER/HUE/MIRROR with PRISMA Core before expanding the native effect family;
+9. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
+10. implement account backend API skeleton and signed offline-entitlement proof;
+11. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
+12. only then begin production UI composition.
 
 ## Protected external baselines
 
