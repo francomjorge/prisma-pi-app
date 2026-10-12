@@ -150,12 +150,13 @@ jobs:
           cp spikes/android_flutter/android/AndroidMediaBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaBridge.kt
           cp spikes/android_flutter/android/AndroidMediaResourceTracker.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaResourceTracker.kt
           cp spikes/android_flutter/android/AndroidMediaSurfaceFactory.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaSurfaceFactory.kt
+          cp spikes/android_flutter/android/AndroidGpuVideoSurfaceFactory.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidGpuVideoSurfaceFactory.kt
       - name: Analyze spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter analyze
       - name: Test spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter test
-      - name: Build debug APK with native Media3 surface
+      - name: Build debug APK with native Media3 + SurfaceTexture GPU path
         working-directory: /tmp/prisma_mobile_spike
         run: flutter build apk --debug
