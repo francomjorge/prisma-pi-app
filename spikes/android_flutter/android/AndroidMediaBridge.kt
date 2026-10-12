@@ -1,6 +1,7 @@
 package com.prismapi.prisma_mobile_spike
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -11,8 +12,9 @@ import java.io.File
  * Diagnostic Android media/storage boundary for M0.
  *
  * This deliberately uses ContentResolver for user-selected content instead of
- * relying on unstable external filesystem paths. It also probes managed local
- * files without decoding full image/video payloads into Dart memory.
+ * relying on unstable external filesystem paths. It also probes and decodes
+ * managed local files natively so full image/video payloads do not cross the
+ * Flutter method channel.
  */
 class AndroidMediaBridge(private val context: Context) {
     fun inspectUri(uriText: String): Map<String, Any?> {
@@ -90,6 +92,50 @@ class AndroidMediaBridge(private val context: Context) {
 
         error("Unsupported or unreadable media: $path")
     }
+
+    fun decodeImageFile(path: String): Map<String, Any?> {
+        val file = File(path)
+        require(file.exists() && file.isFile) { "Managed image file does not exist: $path" }
+
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            ?: error("Android BitmapFactory could not decode $path")
+        return try {
+            bitmapSummary(bitmap, "ANDROID_BITMAP_FACTORY")
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    fun decodeVideoFrame(path: String, timeMs: Long): Map<String, Any?> {
+        val file = File(path)
+        require(file.exists() && file.isFile) { "Managed video file does not exist: $path" }
+
+        val retriever = MediaMetadataRetriever()
+        var bitmap: Bitmap? = null
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val safeTimeMs = timeMs.coerceAtLeast(0L)
+            bitmap = retriever.getFrameAtTime(
+                safeTimeMs * 1000L,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            ) ?: error("Android could not decode a video frame at ${safeTimeMs}ms")
+
+            bitmapSummary(bitmap, "ANDROID_MEDIA_METADATA_RETRIEVER") + mapOf(
+                "requested_time_ms" to safeTimeMs,
+            )
+        } finally {
+            bitmap?.recycle()
+            retriever.release()
+        }
+    }
+
+    private fun bitmapSummary(bitmap: Bitmap, backend: String): Map<String, Any?> = mapOf(
+        "backend" to backend,
+        "width" to bitmap.width,
+        "height" to bitmap.height,
+        "allocation_bytes" to bitmap.allocationByteCount,
+        "config" to bitmap.config?.name,
+    )
 
     private fun probeImage(file: File): Map<String, Any?>? {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
