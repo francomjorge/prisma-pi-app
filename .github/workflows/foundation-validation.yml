@@ -50,6 +50,7 @@ jobs:
           rm -rf /tmp/prisma_mobile_spike
           flutter create --platforms=android --org com.prismapi --project-name prisma_mobile_spike /tmp/prisma_mobile_spike
           cp spikes/android_flutter/lib/main.dart /tmp/prisma_mobile_spike/lib/main.dart
+          rm -f /tmp/prisma_mobile_spike/test/widget_test.dart
           cp spikes/android_flutter/test/smoke_test.dart /tmp/prisma_mobile_spike/test/smoke_test.dart
           mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
           cp spikes/android_flutter/android/MainActivity.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/MainActivity.kt
