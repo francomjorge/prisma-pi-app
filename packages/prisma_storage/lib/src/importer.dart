@@ -8,13 +8,27 @@ import 'layout.dart';
 import 'model.dart';
 import 'repository.dart';
 
+/// Logical source metadata shared by all import adapters.
+///
+/// A source may expose its bytes as a Dart stream or may ask a platform adapter
+/// to materialize those bytes directly into the importer-owned staging path.
+/// The latter avoids copying large Android/iOS media payloads through a method
+/// channel or Dart heap merely to reach managed storage.
 abstract interface class AssetImportSource {
   String get displayName;
   String? get originalReference;
+}
+
+abstract interface class StreamingAssetImportSource implements AssetImportSource {
   Stream<List<int>> openRead();
 }
 
-class FileAssetImportSource implements AssetImportSource {
+abstract interface class MaterializingAssetImportSource implements AssetImportSource {
+  Future<void> materializeTo(String targetPath);
+}
+
+class FileAssetImportSource
+    implements StreamingAssetImportSource, MaterializingAssetImportSource {
   FileAssetImportSource(
     this.path, {
     String? displayName,
@@ -31,6 +45,36 @@ class FileAssetImportSource implements AssetImportSource {
 
   @override
   Stream<List<int>> openRead() => File(path).openRead();
+
+  @override
+  Future<void> materializeTo(String targetPath) async {
+    await File(targetPath).parent.create(recursive: true);
+    await File(path).copy(targetPath);
+  }
+}
+
+typedef AssetMaterializer = Future<void> Function(String targetPath);
+
+/// Adapter-friendly source for platform-owned content such as Android
+/// `content://` URIs. The storage runtime still owns the staging path and all
+/// validation/commit semantics; the callback owns only byte materialization.
+class CallbackAssetImportSource implements MaterializingAssetImportSource {
+  const CallbackAssetImportSource({
+    required this.displayName,
+    required this.materializer,
+    this.originalReference,
+  });
+
+  @override
+  final String displayName;
+
+  @override
+  final String? originalReference;
+
+  final AssetMaterializer materializer;
+
+  @override
+  Future<void> materializeTo(String targetPath) => materializer(targetPath);
 }
 
 abstract interface class MediaProbe {
@@ -210,13 +254,34 @@ class MediaImporter {
     File stagingFile,
   ) async {
     await stagingFile.parent.create(recursive: true);
-    final sink = stagingFile.openWrite(mode: FileMode.writeOnly);
-    try {
-      await sink.addStream(source.openRead());
-      await sink.flush();
-    } finally {
-      await sink.close();
+    await _deleteIfExists(stagingFile);
+
+    if (source is MaterializingAssetImportSource) {
+      await source.materializeTo(stagingFile.path);
+      if (!await stagingFile.exists()) {
+        throw const MediaImportException(
+          'SOURCE_MATERIALIZATION_FAILED',
+          'Import source did not materialize a staging file',
+        );
+      }
+      return;
     }
+
+    if (source is StreamingAssetImportSource) {
+      final sink = stagingFile.openWrite(mode: FileMode.writeOnly);
+      try {
+        await sink.addStream(source.openRead());
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+      return;
+    }
+
+    throw const MediaImportException(
+      'UNSUPPORTED_IMPORT_SOURCE',
+      'Import source exposes neither a stream nor a platform materializer',
+    );
   }
 
   void _validateProbe(MediaProbeResult result) {
