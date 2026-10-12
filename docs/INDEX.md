@@ -17,6 +17,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
 - `storage/STORAGE-RUNTIME-IMPLEMENTATION.md` — implemented managed layout, transactional imports, SHA-256 integrity, rollback and startup recovery behavior.
 - `media/MEDIA-RUNTIME-FOUNDATION.md` — SAF/platform materialization, managed-media handoff, native probe/decode boundary and platform-neutral local-media lifecycle.
+- `media/ANDROID-MEDIA-SURFACE-SPIKE.md` — target-sized Android image decode, Media3 native video surface, explicit disposal and resource-counter validation plan.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
 - `accounts/BACKEND-DATA-MODEL.md` — logical account/identity/session/entitlement/purchase persistence model, uniqueness rules and offline snapshot boundary.
@@ -116,7 +117,8 @@ Platform-neutral local-media contracts for:
 - aspect/fit semantics independent of Flutter/Android classes;
 - bounded decode-resolution planning;
 - runtime image/cache/decoder/surface budgets;
-- memory-pressure release policy and explicit releasable-resource boundary.
+- memory-pressure release policy and explicit releasable-resource boundary;
+- explicit `MediaResourceRegistry` ownership/byte accounting and idempotent resource leases.
 
 ### `packages/prisma_mock_appliance`
 
@@ -144,15 +146,18 @@ The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for
 - `ContentResolver` metadata inspection and direct materialization into importer-owned staging;
 - native image/video metadata probing;
 - native still-image decode probe;
-- native video-frame decode probe without moving raw frames through Dart.
+- native video-frame decode probe without moving raw frames through Dart;
+- target-sized still-image rendering through a native Android platform view;
+- Media3 ExoPlayer local-video playback/repeat surface through a native platform view;
+- native decoder/surface/decoded-image resource counters and explicit platform-view disposal.
 
-This is still diagnostic infrastructure, not product UI. Continuous looping-video playback/render-surface validation and real-device validation are still required.
+This is still diagnostic infrastructure, not product UI. Sustained looping-video quality, GPU-texture processing interop and real-device resource validation are still required.
 
 ## CI policy
 
 Foundation CI runs on the open pull request and supports manual dispatch. Workflow concurrency cancels obsolete in-progress runs when a newer foundation commit supersedes them, preventing stale validation queues from hiding the state of the current branch.
 
-Current gate covers domain, security contracts, managed storage runtime, media-runtime contracts, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests.
+Current gate covers domain, security contracts, managed storage runtime, media-runtime contracts/resource ownership, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests including the Media3 native surface.
 
 ## Related sources of truth
 
