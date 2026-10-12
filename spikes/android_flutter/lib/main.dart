@@ -203,7 +203,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 Text('Native resources: $resourceState'),
                 if (activeMedia != null)
                   Text(
-                    'Render path: ${isVideo ? 'Media3 → SurfaceTexture → OES/GLSL' : 'target-sized native image'}',
+                    'Render path: ${isVideo ? 'Media3 → SurfaceTexture → OES/GLSL → POSTERIZE' : 'target-sized native image'}',
                   ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -265,6 +265,9 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                         'autoplay': true,
                         'loop': true,
                         'muted': true,
+                        'effect': isVideo ? 'posterize' : 'passthrough',
+                        'effect_amount': 0.85,
+                        'posterize_levels': 6,
                       },
                     ),
                   ),
