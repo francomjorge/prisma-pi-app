@@ -86,8 +86,8 @@ SYNCHRONIZING
 READY
  │
  ├─ event gap / media-control fault → STALE → SYNCHRONIZING → READY
- ├─ transport loss               → RECONNECTING → SYNCHRONIZING → READY
- ├─ unrecoverable failure        → FAILED
+ ├─ transport loss               → RECONNECTING → AUTHENTICATING → SYNCHRONIZING → READY
+ ├─ retry budget exhausted       → FAILED
  └─ explicit close               → CLOSED
 ```
 
@@ -143,31 +143,55 @@ Likewise a control reconnect requires a fresh state snapshot and media endpoint 
 
 ## 9. Reconnection policy
 
-Production connector adapters should implement bounded exponential reconnect with jitter and explicit terminal/auth states.
-
-Recommended conceptual policy:
+`PrismaSessionManager` now owns a transport-independent bounded exponential reconnect policy. The current default is:
 
 ```text
-immediate first retry
-short retries: 0.5s, 1s, 2s
-then bounded backoff up to ~10s
-reset backoff after a stable session
+attempt 1   1s
+attempt 2   2s
+attempt 3   4s
+attempt 4   8s
+attempt 5+  capped at 16s
+retry budget: 8 attempts
 ```
 
-Exact timing is adapter/configuration policy, not Core product semantics.
+The policy is injectable, so deterministic tests use millisecond delays while product builds use conservative timings. A successful session resets the attempt counter.
 
-On successful reconnect:
+A WebSocket/event-channel failure, failed authoritative resync or equivalent control-plane loss moves the session out of `READY`, schedules reconnect and blocks new commands until synchronization succeeds.
 
-1. re-establish transport;
-2. re-authenticate stored local trust;
-3. fetch capabilities when capability digest changed or session policy requires;
-4. fetch full state;
-5. reset generation cursor;
-6. re-subscribe events;
-7. renegotiate media endpoints;
-8. return READY.
+On reconnect the runtime:
 
-## 10. Account-cloud independence
+1. preserves the last snapshot only as stale local context;
+2. cancels the failed event subscription;
+3. tears down the connector transport best-effort;
+4. reconnects to the same discovered device identity;
+5. re-authenticates local appliance trust;
+6. re-fetches capabilities;
+7. fetches full authoritative state;
+8. resets the generation cursor;
+9. fetches media endpoints again;
+10. subscribes a fresh event channel;
+11. returns to `READY`.
+
+`reconnectNow()` exists for explicit user retry and deterministic testing. It bypasses the current backoff delay but does not bypass authentication or synchronization.
+
+## 10. Transport timeouts and errors
+
+`Protocol2LanConnector` now applies explicit timeouts to HTTP operations and the event WebSocket bootstrap. Socket and timeout failures are normalized as `Protocol2TransportException` with a `retryable` flag.
+
+HTTP/application failures remain `Protocol2HttpException`, preserving:
+
+```text
+statusCode
+code
+message
+retryable
+```
+
+This distinction matters because a generation conflict, authentication rejection and network timeout require different recovery behavior.
+
+Default reference timeouts are currently 5 seconds for HTTP and 5 seconds for WebSocket establishment. These are adapter defaults, not Core semantics, and can be tuned after Android/Wi-Fi measurements.
+
+## 11. Account-cloud independence
 
 `PrismaSessionManager` must not require Google/Apple/PRISMA cloud access to control an already paired local appliance.
 
@@ -181,7 +205,7 @@ Local appliance session ── control/media/pairing
 
 A cloud outage may affect entitlement refresh according to offline-license policy, but does not invalidate a local transport trust session by itself.
 
-## 11. Legacy ESP32 adapter
+## 12. Legacy ESP32 adapter
 
 The legacy adapter may poll `/api/state` and map `/source/...` preview behavior internally. These mechanisms must stop at the adapter boundary.
 
@@ -196,7 +220,7 @@ The rest of the application sees the same:
 
 Legacy missing capabilities are explicit, never simulated silently.
 
-## 12. Current implementation status
+## 13. Current implementation status
 
 The repository now contains:
 
@@ -204,8 +228,17 @@ The repository now contains:
 packages/prisma_connector/
 ├── connector contract
 ├── session manager
+├── bounded reconnect/backoff policy
 ├── deterministic MockPrismaConnector
-└── integration tests
+├── Protocol2LanConnector (HTTP + WebSocket)
+├── typed HTTP/transport exceptions
+└── unit/integration tests
+
+packages/prisma_mock_appliance/
+├── real loopback HTTP server
+├── authenticated Protocol 2.0 endpoints
+├── WebSocket event channel
+└── deterministic fault injection
 ```
 
 Current test coverage includes:
@@ -214,17 +247,23 @@ Current test coverage includes:
 - capability/state/media acquisition;
 - command → event → authoritative resynchronization;
 - generation conflict behavior;
-- generation gap recovery.
+- generation gap recovery;
+- in-memory event-channel failure and automatic reconnect;
+- real WebSocket disconnect and session recovery;
+- command/event flow after reconnect;
+- retryable HTTP fault propagation;
+- artificial response latency;
+- request timeout normalization.
 
-## 13. Next implementation increments
+## 14. Next implementation increments
 
 Before production UI:
 
-1. add explicit reconnect scheduler and transport-loss fault injection;
-2. add typed Protocol 2.0 response/error objects instead of raw maps;
+1. add reconnect jitter and stable-session reset metrics after mobile measurements;
+2. replace remaining raw Protocol 2.0 response maps with typed envelopes/results;
 3. add pairing/trust adapter boundary;
-4. implement LAN discovery adapter;
-5. implement WebSocket Protocol 2.0 connector against Mock Appliance server;
+4. implement LAN discovery adapter (Android NSD / mDNS-DNS-SD);
+5. implement full server-down / same-endpoint restart fault tests;
 6. implement Legacy ESP32 connector;
 7. add media-channel lifecycle abstraction;
 8. physically validate legacy connector against protected ESP32 baseline.
