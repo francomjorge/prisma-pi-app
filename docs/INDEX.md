@@ -15,6 +15,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `connectivity/ANDROID-LOCAL-NETWORK-DISCOVERY.md` — Android NSD/mDNS boundary, local-network permission evolution, `_prisma-pi._tcp` discovery and validation gates.
 - `testing/MOCK-APPLIANCE.md` — deterministic in-memory + network Mock Appliance strategy, implemented fault injection and integration-test matrix.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
+- `storage/STORAGE-RUNTIME-IMPLEMENTATION.md` — implemented managed layout, transactional imports, SHA-256 integrity, rollback and startup recovery behavior.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
 - `accounts/BACKEND-DATA-MODEL.md` — logical account/identity/session/entitlement/purchase persistence model, uniqueness rules and offline snapshot boundary.
@@ -22,10 +23,11 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `SECURITY-PAIRING.md` — appliance trust, pairing, credential handling and production transport-security constraints. Account login is a separate trust domain.
 - `MEDIA-LIVE-VIEW.md` — source/processed/program media semantics and endpoint selection.
 - `UI-SKIN-CONTRACT.md` — UI boundaries, design tokens, skins and input abstraction; no concrete production screens yet.
-- `LEGACY-WEB-REFERENCE.md` — functionality already proven or prototyped in the existing web controller and branches.
+- `LEGACY-WEB-REFERENCE.md` — exact protected ESP32 stable compatibility surface plus historical web/FX experiments.
 - `ROADMAP-INFRA-FIRST.md` — implementation order and validation gates.
 - `PROJECT-STATUS.md` — current status by subsystem using DESIGNED → IMPLEMENTED → BUILT → STATICALLY_VERIFIED → RUNTIME_VERIFIED → HARDWARE_TESTED → BASELINE.
 - `REPOSITORY-LAYOUT.md` — intended application repository organization.
+- `validation/FOUNDATION-CI-EVIDENCE.md` — concrete CI validation evidence and the exact commit/run covered by each recorded baseline.
 
 ## Architecture decisions
 
@@ -52,6 +54,7 @@ Initial platform-neutral product contracts for:
 Remote-runtime infrastructure for:
 
 - connector transport abstraction;
+- transport-neutral failure model;
 - discovery records;
 - discovery-provider coordinator with device-id deduplication;
 - connection health;
@@ -60,9 +63,11 @@ Remote-runtime infrastructure for:
 - full-state synchronization and generation-gap recovery;
 - deterministic in-memory Mock Appliance;
 - Protocol 2.0 LAN/Wi-Fi HTTP + WebSocket connector;
+- command-idempotency behavior in the mock/reference contract;
 - HTTP/socket timeout normalization;
 - typed HTTP/transport exceptions;
-- integration tests for commands/conflicts/resynchronization/reconnect.
+- read-only `LegacyEsp32Connector` for the protected `/api/state` + `/source/*` stable firmware surface;
+- integration tests for commands/conflicts/resynchronization/reconnect/legacy polling.
 
 ### `packages/prisma_security`
 
@@ -78,6 +83,22 @@ Platform-neutral appliance-trust contracts for:
 - pairing/auth/revoke adapter boundary.
 
 No production cryptographic implementation is claimed yet.
+
+### `packages/prisma_storage`
+
+Managed local-library runtime for:
+
+- durable app-data layout;
+- relative managed media locations;
+- traversal-safe path resolution;
+- streamed staging imports;
+- SHA-256 integrity metadata;
+- injected media probing;
+- image/video validation;
+- atomic file promotion + metadata rollback;
+- interrupted-staging cleanup;
+- orphan/missing durable-media recovery reports;
+- metadata repository boundary for later SQLite implementation.
 
 ### `packages/prisma_mock_appliance`
 
@@ -99,13 +120,16 @@ The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for
 - native method-channel access;
 - physical keyboard events;
 - Android `NsdManager` / DNS-SD discovery through an EventChannel;
-- `_prisma-pi._tcp` service discovery diagnostics.
+- `_prisma-pi._tcp` service discovery diagnostics;
+- AndroidKeyStore AES-GCM secure-secret round-trip diagnostics, with ciphertext in private app storage and the key kept non-exportable in AndroidKeyStore.
 
-This is still diagnostic infrastructure, not product UI.
+This is still diagnostic infrastructure, not product UI. Real-device validation is still required.
 
 ## CI policy
 
 Foundation CI runs on the open pull request and supports manual dispatch. Workflow concurrency cancels obsolete in-progress runs when a newer foundation commit supersedes them, preventing stale validation queues from hiding the state of the current branch.
+
+Current gate covers domain, security contracts, managed storage runtime, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests.
 
 ## Related sources of truth
 
