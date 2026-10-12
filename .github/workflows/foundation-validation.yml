@@ -131,7 +131,7 @@ jobs:
           )
           pubspec.write_text(text)
           PY
-          flutter pub get --directory /tmp/prisma_mobile_spike
+          (cd /tmp/prisma_mobile_spike && flutter pub get)
           rm -f /tmp/prisma_mobile_spike/test/widget_test.dart
           cp spikes/android_flutter/test/smoke_test.dart /tmp/prisma_mobile_spike/test/smoke_test.dart
           mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
