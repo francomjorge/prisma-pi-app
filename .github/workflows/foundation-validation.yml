@@ -98,6 +98,25 @@ jobs:
           rm -rf /tmp/prisma_mobile_spike
           flutter create --platforms=android --org com.prismapi --project-name prisma_mobile_spike /tmp/prisma_mobile_spike
           cp spikes/android_flutter/lib/main.dart /tmp/prisma_mobile_spike/lib/main.dart
+          cp spikes/android_flutter/lib/android_media_import_diagnostic.dart /tmp/prisma_mobile_spike/lib/android_media_import_diagnostic.dart
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          pubspec = Path('/tmp/prisma_mobile_spike/pubspec.yaml')
+          text = pubspec.read_text()
+          marker = 'dependencies:\n'
+          if marker not in text:
+              raise SystemExit('Flutter template has no dependencies section')
+          storage_path = os.path.join(os.environ['GITHUB_WORKSPACE'], 'packages', 'prisma_storage')
+          text = text.replace(
+              marker,
+              f'dependencies:\n  prisma_storage:\n    path: {storage_path}\n',
+              1,
+          )
+          pubspec.write_text(text)
+          PY
+          flutter pub get --directory /tmp/prisma_mobile_spike
           rm -f /tmp/prisma_mobile_spike/test/widget_test.dart
           cp spikes/android_flutter/test/smoke_test.dart /tmp/prisma_mobile_spike/test/smoke_test.dart
           mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
