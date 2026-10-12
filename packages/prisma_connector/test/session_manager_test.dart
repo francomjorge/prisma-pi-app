@@ -3,6 +3,24 @@ import 'package:prisma_domain/prisma_domain.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('ReconnectPolicy', () {
+    test('uses bounded exponential backoff', () {
+      const policy = ReconnectPolicy(
+        initialDelay: Duration(seconds: 1),
+        maxDelay: Duration(seconds: 4),
+        multiplier: 2,
+        maxAttempts: 4,
+      );
+
+      expect(policy.delayForAttempt(0), const Duration(seconds: 1));
+      expect(policy.delayForAttempt(1), const Duration(seconds: 2));
+      expect(policy.delayForAttempt(2), const Duration(seconds: 4));
+      expect(policy.delayForAttempt(3), const Duration(seconds: 4));
+      expect(policy.allowsAttempt(3), isTrue);
+      expect(policy.allowsAttempt(4), isFalse);
+    });
+  });
+
   group('PrismaSessionManager', () {
     test('bootstraps descriptor, capabilities, state and media endpoints', () async {
       final connector = MockPrismaConnector();
@@ -86,6 +104,39 @@ void main() {
       expect((response['error'] as Map)['code'], 'GENERATION_CONFLICT');
       expect((await connector.getState()).generation, 1);
       expect((await connector.getState()).power, isTrue);
+
+      await session.dispose();
+    });
+
+    test('event-channel failure automatically reconnects and restores ready', () async {
+      final connector = MockPrismaConnector();
+      final session = PrismaSessionManager(
+        connector,
+        reconnectPolicy: const ReconnectPolicy(
+          initialDelay: Duration(milliseconds: 10),
+          maxDelay: Duration(milliseconds: 20),
+          multiplier: 2,
+          maxAttempts: 3,
+        ),
+      );
+      await session.open(await connector.discover().first);
+      expect(connector.connectCount, 1);
+
+      final reconnecting = session.snapshots.firstWhere(
+        (snapshot) => snapshot.phase == SessionPhase.reconnecting,
+      );
+      final recovered = session.snapshots.firstWhere(
+        (snapshot) =>
+            snapshot.phase == SessionPhase.ready && connector.connectCount >= 2,
+      );
+
+      connector.injectEventChannelFailure();
+
+      await reconnecting.timeout(const Duration(seconds: 1));
+      final ready = await recovered.timeout(const Duration(seconds: 1));
+      expect(ready.phase, SessionPhase.ready);
+      expect(connector.connectCount, 2);
+      expect(ready.state?.generation, 1);
 
       await session.dispose();
     });
