@@ -9,8 +9,9 @@ Map<String, Object?> buildDiagnosticProcessingPlan() {
     providedCapabilities: const {
       'gpu.external_texture',
       'gpu.fragment_shader',
+      'gpu.ping_pong_targets',
     },
-    maxActiveNodes: 1,
+    maxActiveNodes: 4,
     supportedInputTransports: const {
       ProcessingFrameTransport.opaqueNativeSurface,
       ProcessingFrameTransport.opaqueGpuTexture,
@@ -25,7 +26,7 @@ Map<String, Object?> buildDiagnosticProcessingPlan() {
 
   final graph = ProcessingGraph([
     ProcessingNode(
-      nodeId: 'm0-poster-proof',
+      nodeId: 'm0-poster-pass',
       type: 'POSTER',
       enabled: true,
       bypass: false,
@@ -37,8 +38,24 @@ Map<String, Object?> buildDiagnosticProcessingPlan() {
       requiredCapabilities: const [
         'gpu.external_texture',
         'gpu.fragment_shader',
+        'gpu.ping_pong_targets',
       ],
       order: 0,
+    ),
+    ProcessingNode(
+      nodeId: 'm0-grayscale-pass',
+      type: 'GRAYSCALE',
+      enabled: true,
+      bypass: false,
+      parameters: const {
+        'amount': 0.35,
+      },
+      executionTarget: ProcessingExecutionTarget.mobile,
+      requiredCapabilities: const [
+        'gpu.fragment_shader',
+        'gpu.ping_pong_targets',
+      ],
+      order: 1,
     ),
   ]);
 
