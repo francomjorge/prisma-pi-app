@@ -62,7 +62,7 @@ void main() {
       const policy = MediaPresentationPolicy(
         fit: MediaFitMode.nativePixels,
         intent: MediaDecodeIntent.processingSource,
-        maxDecodePixels: 1_000_000,
+        maxDecodePixels: 1000000,
       );
 
       final result = policy.resolveDecodeSize(
@@ -70,7 +70,7 @@ void main() {
         viewport: const PixelSize(4000, 3000),
       );
 
-      expect(result.pixelCount, lessThanOrEqualTo(1_000_000));
+      expect(result.pixelCount, lessThanOrEqualTo(1000000));
       expect(result.aspectRatio, closeTo(4 / 3, 0.01));
     });
   });
