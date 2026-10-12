@@ -81,8 +81,14 @@ void main() {
         timestampMs: 100,
       );
 
+      final synchronized = session.snapshots.firstWhere(
+        (snapshot) =>
+            snapshot.phase == SessionPhase.ready &&
+            snapshot.state?.generation == 2,
+      );
+
       final first = await session.issue(command);
-      await Future<void>.delayed(Duration.zero);
+      await synchronized.timeout(const Duration(seconds: 1));
       final generationAfterFirst = (await connector.getState()).generation;
       final second = await session.issue(command);
       final generationAfterSecond = (await connector.getState()).generation;
@@ -101,6 +107,12 @@ void main() {
       final session = PrismaSessionManager(connector);
       await session.open(await connector.discover().first);
 
+      final synchronized = session.snapshots.firstWhere(
+        (snapshot) =>
+            snapshot.phase == SessionPhase.ready &&
+            snapshot.state?.generation == 2,
+      );
+
       final first = await session.issue(const PrismaCommand(
         commandId: 'cmd-reused',
         type: 'SET_INTENSITY',
@@ -110,6 +122,7 @@ void main() {
         timestampMs: 1,
       ));
       expect(first['ok'], isTrue);
+      await synchronized.timeout(const Duration(seconds: 1));
 
       final second = await session.issue(const PrismaCommand(
         commandId: 'cmd-reused',
