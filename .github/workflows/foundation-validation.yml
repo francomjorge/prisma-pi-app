@@ -182,3 +182,29 @@ jobs:
       - name: Build debug APK with neutral processing plan + native Media3/OES GPU adapter
         working-directory: /tmp/prisma_mobile_spike
         run: flutter build apk --debug
+      - name: Package exact M0 diagnostic APK
+        env:
+          PRISMA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/prisma-m0-artifact
+          short_sha="${PRISMA_SOURCE_SHA:0:12}"
+          apk="/tmp/prisma-m0-artifact/prisma-m0-android-diagnostic-${short_sha}.apk"
+          cp /tmp/prisma_mobile_spike/build/app/outputs/flutter-apk/app-debug.apk "$apk"
+          sha256sum "$apk" > "${apk}.sha256"
+          cat > /tmp/prisma-m0-artifact/BUILD-METADATA.txt <<EOF
+          source_head_sha=${PRISMA_SOURCE_SHA}
+          workflow_sha=${GITHUB_SHA}
+          workflow_run_id=${GITHUB_RUN_ID}
+          workflow_run_number=${GITHUB_RUN_NUMBER}
+          repository=${GITHUB_REPOSITORY}
+          build_type=debug-diagnostic
+          purpose=PRISMA-PI M0 physical Android validation only
+          EOF
+      - name: Upload validated M0 diagnostic APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-m0-android-diagnostic-run-${{ github.run_number }}
+          path: /tmp/prisma-m0-artifact/*
+          if-no-files-found: error
+          retention-days: 14
