@@ -4,10 +4,12 @@ import 'package:prisma_storage/prisma_storage.dart';
 class AndroidMediaImportDiagnosticResult {
   const AndroidMediaImportDiagnosticResult({
     required this.asset,
+    required this.managedPath,
     required this.decodeProbe,
   });
 
   final MediaAsset asset;
+  final String managedPath;
   final Map<String, dynamic> decodeProbe;
 }
 
@@ -71,6 +73,7 @@ class AndroidMediaImportDiagnostic {
     final decodeProbe = await _decodeProbe(asset, managedPath);
     return AndroidMediaImportDiagnosticResult(
       asset: asset,
+      managedPath: managedPath,
       decodeProbe: decodeProbe,
     );
   }
