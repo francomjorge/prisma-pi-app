@@ -1,8 +1,17 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
 
 import 'package:prisma_domain/prisma_domain.dart';
 
 import 'connector.dart';
+
+class _CommandReplayEntry {
+  const _CommandReplayEntry({required this.fingerprint, required this.response});
+
+  final String fingerprint;
+  final Map<String, dynamic> response;
+}
 
 /// Deterministic in-memory appliance used to validate client/session behavior
 /// before a physical appliance or network adapter is involved.
@@ -12,6 +21,8 @@ class MockPrismaConnector implements PrismaConnector {
 
   final StreamController<PrismaEvent> _events =
       StreamController<PrismaEvent>.broadcast(sync: true);
+  final LinkedHashMap<String, _CommandReplayEntry> _commandReplayCache =
+      LinkedHashMap<String, _CommandReplayEntry>();
 
   PrismaState _state;
   bool _connected = false;
@@ -22,6 +33,7 @@ class MockPrismaConnector implements PrismaConnector {
       const ConnectorHealth(state: ConnectorState.disconnected);
 
   static const String mockDeviceId = '00000000-0000-4000-8000-000000000001';
+  static const int _maxReplayEntries = 128;
 
   int get connectCount => _connectCount;
 
@@ -89,6 +101,7 @@ class MockPrismaConnector implements PrismaConnector {
         'commands': true,
         'events': true,
         'expected_generation': true,
+        'command_idempotency': true,
       },
       'security': {'pairing': true, 'session_auth': true},
       'media': {'image': true, 'video': true, 'video_audio': true},
@@ -169,13 +182,32 @@ class MockPrismaConnector implements PrismaConnector {
   @override
   Future<Map<String, dynamic>> sendCommand(PrismaCommand command) async {
     _requireReady();
+
+    final fingerprint = jsonEncode(command.toJson());
+    final replay = _commandReplayCache[command.commandId];
+    if (replay != null) {
+      if (replay.fingerprint != fingerprint) {
+        return {
+          'ok': false,
+          'generation': _state.generation,
+          'error': {
+            'code': 'COMMAND_ID_REUSE',
+            'retryable': false,
+          }
+        };
+      }
+      return Map<String, dynamic>.from(replay.response);
+    }
+
     final expected = command.expectedGeneration;
     if (expected != null && expected != _state.generation) {
-      return {
+      final response = <String, dynamic>{
         'ok': false,
         'generation': _state.generation,
         'error': {'code': 'GENERATION_CONFLICT', 'retryable': true}
       };
+      _rememberCommand(command.commandId, fingerprint, response);
+      return Map<String, dynamic>.from(response);
     }
 
     final previousGeneration = _state.generation;
@@ -192,18 +224,26 @@ class MockPrismaConnector implements PrismaConnector {
         _state = _copyState(mode: raw == 'RANDOM' ? SynthesisMode.random : SynthesisMode.bypass);
         break;
       default:
-        return {
+        final response = <String, dynamic>{
           'ok': false,
           'generation': _state.generation,
           'error': {'code': 'INVALID_COMMAND', 'retryable': false}
         };
+        _rememberCommand(command.commandId, fingerprint, response);
+        return Map<String, dynamic>.from(response);
     }
 
     if (_state.generation != previousGeneration) {
       _emit('STATE_CHANGED', {'state': _state.toJson()});
     }
 
-    return {'ok': true, 'generation': _state.generation, 'result': _state.toJson()};
+    final response = <String, dynamic>{
+      'ok': true,
+      'generation': _state.generation,
+      'result': _state.toJson(),
+    };
+    _rememberCommand(command.commandId, fingerprint, response);
+    return Map<String, dynamic>.from(response);
   }
 
   @override
@@ -242,6 +282,20 @@ class MockPrismaConnector implements PrismaConnector {
     _requireReady();
     _state = _copyState();
     _emit('MEDIA_ENDPOINT_CHANGED', const {});
+  }
+
+  void _rememberCommand(
+    String commandId,
+    String fingerprint,
+    Map<String, dynamic> response,
+  ) {
+    _commandReplayCache[commandId] = _CommandReplayEntry(
+      fingerprint: fingerprint,
+      response: Map.unmodifiable(response),
+    );
+    while (_commandReplayCache.length > _maxReplayEntries) {
+      _commandReplayCache.remove(_commandReplayCache.keys.first);
+    }
   }
 
   PrismaState _copyState({
