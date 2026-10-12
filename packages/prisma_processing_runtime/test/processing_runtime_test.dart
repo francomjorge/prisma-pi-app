@@ -78,6 +78,78 @@ void main() {
       expect(result.plan.nodes.single.parameters['levels'], 6);
     });
 
+    test('compiled plan order follows domain graph reorder exactly', () {
+      final graph = ProcessingGraph([
+        ProcessingNode(
+          nodeId: 'poster',
+          type: 'POSTER',
+          enabled: true,
+          bypass: false,
+          parameters: const {'amount': 0.8},
+          executionTarget: ProcessingExecutionTarget.mobile,
+          requiredCapabilities: const [],
+          order: 0,
+        ),
+        ProcessingNode(
+          nodeId: 'hue',
+          type: 'HUE',
+          enabled: true,
+          bypass: false,
+          parameters: const {'degrees': 30},
+          executionTarget: ProcessingExecutionTarget.mobile,
+          requiredCapabilities: const [],
+          order: 1,
+        ),
+      ]);
+
+      final original = compiler.compileLocal(graph: graph, backend: backend);
+      final reorderedGraph = graph.reorder('hue', 0);
+      final reordered = compiler.compileLocal(
+        graph: reorderedGraph,
+        backend: backend,
+      );
+
+      expect(
+        original.plan.nodes.map((node) => node.nodeId).toList(),
+        ['poster', 'hue'],
+      );
+      expect(
+        reordered.plan.nodes.map((node) => node.nodeId).toList(),
+        ['hue', 'poster'],
+      );
+      expect(reordered.plan.nodes.map((node) => node.order).toList(), [0, 1]);
+    });
+
+    test('bypass removes a supported node without changing remaining order', () {
+      final graph = ProcessingGraph([
+        ProcessingNode(
+          nodeId: 'poster',
+          type: 'POSTER',
+          enabled: true,
+          bypass: true,
+          parameters: const {'amount': 0.8},
+          executionTarget: ProcessingExecutionTarget.mobile,
+          requiredCapabilities: const [],
+          order: 0,
+        ),
+        ProcessingNode(
+          nodeId: 'hue',
+          type: 'HUE',
+          enabled: true,
+          bypass: false,
+          parameters: const {'degrees': 30},
+          executionTarget: ProcessingExecutionTarget.mobile,
+          requiredCapabilities: const [],
+          order: 1,
+        ),
+      ]);
+
+      final result = compiler.compileLocal(graph: graph, backend: backend);
+
+      expect(result.plan.nodes.map((node) => node.nodeId).toList(), ['hue']);
+      expect(result.plan.nodes.single.order, 0);
+    });
+
     test('rejects an unsupported local node by default', () {
       final graph = ProcessingGraph([
         ProcessingNode(
