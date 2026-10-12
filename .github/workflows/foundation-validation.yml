@@ -1,0 +1,210 @@
+name: foundation-validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: foundation-validation-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_domain
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_domain
+        run: dart analyze --fatal-infos
+      - name: Test
+        working-directory: packages/prisma_domain
+        run: dart test
+
+  security-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_security
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_security
+        run: dart analyze --fatal-infos
+      - name: Test fail-closed profile selection
+        working-directory: packages/prisma_security
+        run: dart test
+
+  storage-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_storage
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_storage
+        run: dart analyze --fatal-infos
+      - name: Test transactional imports, SQLite metadata and recovery
+        working-directory: packages/prisma_storage
+        run: dart test
+
+  media-runtime-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_media_runtime
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_media_runtime
+        run: dart analyze --fatal-infos
+      - name: Test local media runtime contracts and resource ownership
+        working-directory: packages/prisma_media_runtime
+        run: dart test
+
+  processing-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_processing_runtime
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_processing_runtime
+        run: dart analyze --fatal-infos
+      - name: Test graph compilation and native-adapter contracts
+        working-directory: packages/prisma_processing_runtime
+        run: dart test
+
+  connector-session:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_connector
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_connector
+        run: dart analyze --fatal-infos
+      - name: Test in-memory Mock Appliance, legacy adapter and session synchronization
+        working-directory: packages/prisma_connector
+        run: dart test
+
+  network-protocol-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_mock_appliance
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_mock_appliance
+        run: dart analyze --fatal-infos
+      - name: Test Protocol 2.0 over HTTP and WebSocket
+        working-directory: packages/prisma_mock_appliance
+        run: dart test
+
+  android-stack-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate disposable Android Flutter host
+        run: |
+          rm -rf /tmp/prisma_mobile_spike
+          flutter create --platforms=android --org com.prismapi --project-name prisma_mobile_spike /tmp/prisma_mobile_spike
+          cp spikes/android_flutter/lib/main.dart /tmp/prisma_mobile_spike/lib/main.dart
+          cp spikes/android_flutter/lib/android_media_import_diagnostic.dart /tmp/prisma_mobile_spike/lib/android_media_import_diagnostic.dart
+          cp spikes/android_flutter/lib/processing_adapter_diagnostic.dart /tmp/prisma_mobile_spike/lib/processing_adapter_diagnostic.dart
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          pubspec = Path('/tmp/prisma_mobile_spike/pubspec.yaml')
+          text = pubspec.read_text()
+          marker = 'dependencies:\n'
+          if marker not in text:
+              raise SystemExit('Flutter template has no dependencies section')
+          workspace = os.environ['GITHUB_WORKSPACE']
+          domain_path = os.path.join(workspace, 'packages', 'prisma_domain')
+          processing_path = os.path.join(workspace, 'packages', 'prisma_processing_runtime')
+          storage_path = os.path.join(workspace, 'packages', 'prisma_storage')
+          text = text.replace(
+              marker,
+              'dependencies:\n'
+              f'  prisma_domain:\n    path: {domain_path}\n'
+              f'  prisma_processing_runtime:\n    path: {processing_path}\n'
+              f'  prisma_storage:\n    path: {storage_path}\n',
+              1,
+          )
+          pubspec.write_text(text)
+
+          gradle = Path('/tmp/prisma_mobile_spike/android/app/build.gradle.kts')
+          gradle.write_text(
+              gradle.read_text()
+              + '\n\ndependencies {\n'
+                '    implementation("androidx.media3:media3-exoplayer:1.11.1")\n'
+                '    implementation("androidx.media3:media3-ui:1.11.1")\n'
+                '}\n'
+          )
+          PY
+          (cd /tmp/prisma_mobile_spike && flutter pub get)
+          rm -f /tmp/prisma_mobile_spike/test/widget_test.dart
+          cp spikes/android_flutter/test/smoke_test.dart /tmp/prisma_mobile_spike/test/smoke_test.dart
+          mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
+          cp spikes/android_flutter/android/MainActivity.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/MainActivity.kt
+          cp spikes/android_flutter/android/NsdDiscoveryBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/NsdDiscoveryBridge.kt
+          cp spikes/android_flutter/android/KeystoreSecretBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/KeystoreSecretBridge.kt
+          cp spikes/android_flutter/android/AndroidMediaBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaBridge.kt
+          cp spikes/android_flutter/android/AndroidMediaResourceTracker.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaResourceTracker.kt
+          cp spikes/android_flutter/android/AndroidMediaSurfaceFactory.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaSurfaceFactory.kt
+          cp spikes/android_flutter/android/AndroidGpuVideoSurfaceFactory.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidGpuVideoSurfaceFactory.kt
+      - name: Analyze spike
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter analyze
+      - name: Test spike
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter test
+      - name: Build debug APK with neutral processing plan + native Media3/OES GPU adapter
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter build apk --debug
+      - name: Package exact M0 diagnostic APK
+        env:
+          PRISMA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/prisma-m0-artifact
+          short_sha="${PRISMA_SOURCE_SHA:0:12}"
+          apk="/tmp/prisma-m0-artifact/prisma-m0-android-diagnostic-${short_sha}.apk"
+          cp /tmp/prisma_mobile_spike/build/app/outputs/flutter-apk/app-debug.apk "$apk"
+          sha256sum "$apk" > "${apk}.sha256"
+          cat > /tmp/prisma-m0-artifact/BUILD-METADATA.txt <<EOF
+          source_head_sha=${PRISMA_SOURCE_SHA}
+          workflow_sha=${GITHUB_SHA}
+          workflow_run_id=${GITHUB_RUN_ID}
+          workflow_run_number=${GITHUB_RUN_NUMBER}
+          repository=${GITHUB_REPOSITORY}
+          build_type=debug-diagnostic
+          purpose=PRISMA-PI M0 physical Android validation only
+          EOF
+      - name: Upload validated M0 diagnostic APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-m0-android-diagnostic-run-${{ github.run_number }}
+          path: /tmp/prisma-m0-artifact/*
+          if-no-files-found: error
+          retention-days: 14
