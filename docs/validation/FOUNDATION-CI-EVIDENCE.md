@@ -41,3 +41,52 @@ Evidence included:
 This evidence is **static/CI validation**, not Android physical-device testing and not ESP32 hardware validation.
 
 The production pairing profile remains PROPOSED even though the platform-neutral security contract passed CI.
+
+---
+
+## 2026-10-12 — Expanded green gate: legacy + storage + Keystore compile
+
+Validated head commit:
+
+```text
+e6f2bdd6b816909d61cd0c3a72686526aeb7a580
+```
+
+GitHub Actions workflow run:
+
+```text
+foundation-validation #161
+run_id: 38216669784
+```
+
+All six jobs completed successfully:
+
+```text
+domain                        SUCCESS
+security-contracts            SUCCESS
+storage-runtime               SUCCESS
+connector-session             SUCCESS
+network-protocol-integration  SUCCESS
+android-stack-spike           SUCCESS
+```
+
+This gate additionally validates:
+
+- read-only `LegacyEsp32Connector` state normalization against a local fixture matching the protected `/api/state` schema;
+- explicit legacy capability limitations and `UNSUPPORTED_COMMAND` behavior;
+- legacy 300 ms-style polling adapter feeding normal session generation reconciliation;
+- managed storage layout and path traversal protection;
+- transactional image/video import staging;
+- SHA-256 integrity metadata;
+- invalid-media rejection;
+- metadata-commit rollback;
+- interrupted import staging cleanup;
+- orphan/missing durable-media recovery reporting;
+- Android M0 source compilation including `NsdDiscoveryBridge.kt`;
+- Android M0 source compilation including `KeystoreSecretBridge.kt`;
+- Flutter analysis/tests;
+- full debug Android APK build.
+
+The Android Keystore result here proves **source/build integration only**. It does not prove secure-store runtime behavior on a physical phone; the diagnostic round-trip still needs to be run on-device.
+
+The legacy adapter result proves adapter behavior against a deterministic HTTP fixture. It does not constitute physical validation against the ESP32-S3 appliance.
