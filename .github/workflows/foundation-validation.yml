@@ -55,6 +55,21 @@ jobs:
         working-directory: packages/prisma_storage
         run: dart test
 
+  media-runtime-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_media_runtime
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_media_runtime
+        run: dart analyze --fatal-infos
+      - name: Test local media runtime contracts
+        working-directory: packages/prisma_media_runtime
+        run: dart test
+
   connector-session:
     runs-on: ubuntu-latest
     steps:
