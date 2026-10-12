@@ -13,7 +13,15 @@ void main() {
       server = PrismaMockApplianceServer();
       await server.start();
       connector = Protocol2LanConnector(seedRecords: [server.discoveryRecord]);
-      session = PrismaSessionManager(connector);
+      session = PrismaSessionManager(
+        connector,
+        reconnectPolicy: const ReconnectPolicy(
+          initialDelay: Duration(milliseconds: 20),
+          maxDelay: Duration(milliseconds: 100),
+          multiplier: 2,
+          maxAttempts: 4,
+        ),
+      );
     });
 
     tearDown(() async {
@@ -94,6 +102,73 @@ void main() {
         (response['result'] as Map)['device_id'],
         MockPrismaConnector.mockDeviceId,
       );
+    });
+
+    test('forced WebSocket loss reconnects and restores command/event flow',
+        () async {
+      await session.open(server.discoveryRecord);
+      expect(server.eventClientCount, 1);
+
+      final reconnecting = session.snapshots.firstWhere(
+        (snapshot) => snapshot.phase == SessionPhase.reconnecting,
+      );
+      final readyAgain = session.snapshots.firstWhere(
+        (snapshot) =>
+            snapshot.phase == SessionPhase.ready &&
+            server.eventClientCount == 1,
+      );
+
+      await server.disconnectEventClients();
+      await reconnecting.timeout(const Duration(seconds: 2));
+      final recovered = await readyAgain.timeout(const Duration(seconds: 3));
+      expect(recovered.phase, SessionPhase.ready);
+
+      final before = recovered.state!.generation;
+      final advanced = session.snapshots.firstWhere(
+        (snapshot) =>
+            snapshot.phase == SessionPhase.ready &&
+            (snapshot.state?.generation ?? 0) > before,
+      );
+
+      final result = await session.issue(PrismaCommand(
+        commandId: 'after-reconnect',
+        type: 'SET_POWER',
+        payload: const {'power': false},
+        origin: 'NETWORK_TEST',
+        expectedGeneration: before,
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+      ));
+      expect(result['ok'], isTrue);
+      final next = await advanced.timeout(const Duration(seconds: 3));
+      expect(next.state?.power, isFalse);
+    });
+
+    test('one-shot HTTP fault is surfaced as retryable typed exception', () async {
+      await session.open(server.discoveryRecord);
+      server.failNextRequest(
+        '/v2/request',
+        code: 'MOCK_TRANSIENT',
+        retryable: true,
+      );
+
+      await expectLater(
+        connector.request('GET_DEVICE_INFO', const {}),
+        throwsA(
+          isA<Protocol2HttpException>()
+              .having((e) => e.code, 'code', 'MOCK_TRANSIENT')
+              .having((e) => e.retryable, 'retryable', isTrue),
+        ),
+      );
+
+      final recovered = await connector.request('GET_DEVICE_INFO', const {});
+      expect(recovered['ok'], isTrue);
+    });
+
+    test('artificial latency preserves protocol correctness', () async {
+      server.setResponseLatency(const Duration(milliseconds: 20));
+      await session.open(server.discoveryRecord);
+      expect(session.snapshot.phase, SessionPhase.ready);
+      expect(session.snapshot.state?.generation, 1);
     });
   });
 }
