@@ -35,6 +35,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `decisions/ADR-001-MOBILE-STACK.md` — proposed Flutter application shell + native media/platform boundary; not accepted until the Android spike is validated.
 - `decisions/ADR-002-ACCOUNT-IDENTITY-AND-LICENSING.md` — provider-independent PRISMA account, Google-first Android login, backend-issued sessions, normalized entitlements and offline licensing.
 - `decisions/ADR-003-APPLIANCE-PAIRING-SECURITY.md` — proposed first-pairing + authenticated local-session architecture grounded in ESP32-S3 / ESP-IDF capabilities; remains PROPOSED until hardware measurements and security validation pass.
+- `decisions/ADR-004-MEDIA-UI-RESOURCE-STACK.md` — advanced image/video/UI stack boundaries, aspect/resolution policy, candidate libraries and deterministic resource-release requirements.
 
 ## Implemented non-UI packages
 
@@ -111,7 +112,11 @@ Platform-neutral local-media contracts for:
 - open/autoplay/loop/mute options;
 - session lifecycle and snapshots;
 - play/pause/seek/loop/mute/close ports;
-- deterministic lifecycle transition validation.
+- deterministic lifecycle transition validation;
+- aspect/fit semantics independent of Flutter/Android classes;
+- bounded decode-resolution planning;
+- runtime image/cache/decoder/surface budgets;
+- memory-pressure release policy and explicit releasable-resource boundary.
 
 ### `packages/prisma_mock_appliance`
 
