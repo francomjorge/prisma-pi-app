@@ -25,15 +25,15 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * M0 GPU-path spike:
+ * M0 ordered GPU-processing spike:
  *
  * Media3 decoder -> Surface -> SurfaceTexture -> GL_TEXTURE_EXTERNAL_OES ->
- * neutral PRISMA processing plan -> GLSL effect stage -> native render target.
+ * aspect/input pass -> ping-pong 2D render targets -> ordered PRISMA nodes ->
+ * native render target.
  *
  * Raw video frames never cross the Flutter method channel. The native adapter
- * consumes a schema-versioned processing plan that was compiled from the
- * platform-neutral PRISMA ProcessingGraph. The current spike intentionally
- * supports only one diagnostic node (POSTER or GRAYSCALE).
+ * consumes a schema-versioned processing plan compiled from the platform-neutral
+ * PRISMA ProcessingGraph. OpenGL texture/FBO identifiers remain private here.
  */
 @UnstableApi
 class AndroidGpuVideoSurfaceFactory :
@@ -65,9 +65,7 @@ private class AndroidGpuVideoPlatformView(
     private val gpuView = PrismaGpuVideoView(
         context = context,
         fit = fit,
-        effect = processing.effect,
-        effectAmount = processing.effectAmount,
-        posterizeLevels = processing.posterizeLevels,
+        processingNodes = processing.nodes,
         onSurfaceReady = surfaceReady@{ surface, renderer ->
             if (disposed || player != null) return@surfaceReady
             require(File(path).isFile) { "GPU video path does not exist: $path" }
@@ -114,19 +112,29 @@ private class AndroidGpuVideoPlatformView(
     }
 }
 
-private data class DiagnosticProcessingConfig(
-    val effect: String,
-    val effectAmount: Float,
+private data class DiagnosticProcessingNode(
+    val nodeId: String,
+    val type: String,
+    val amount: Float,
     val posterizeLevels: Float,
 ) {
+    val effectMode: Float
+        get() = when (type) {
+            "GRAYSCALE" -> 1f
+            "POSTER" -> 2f
+            else -> 0f
+        }
+}
+
+private data class DiagnosticProcessingConfig(
+    val nodes: List<DiagnosticProcessingNode>,
+) {
     companion object {
+        private const val MAX_DIAGNOSTIC_NODES = 4
+
         fun fromParams(params: Map<*, *>): DiagnosticProcessingConfig {
             val plan = params["processing_plan"] as? Map<*, *>
-                ?: return DiagnosticProcessingConfig(
-                    effect = "passthrough",
-                    effectAmount = 0f,
-                    posterizeLevels = 6f,
-                )
+                ?: return DiagnosticProcessingConfig(emptyList())
 
             val schemaVersion = (plan["schema_version"] as? Number)?.toInt()
                 ?: error("processing plan requires schema_version")
@@ -134,48 +142,44 @@ private data class DiagnosticProcessingConfig(
                 "unsupported processing plan schema_version: $schemaVersion"
             }
 
-            val nodes = plan["nodes"] as? List<*>
+            val rawNodes = plan["nodes"] as? List<*>
                 ?: error("processing plan requires nodes")
-            require(nodes.size <= 1) {
-                "M0 Android GPU adapter supports at most one active node"
-            }
-            if (nodes.isEmpty()) {
-                return DiagnosticProcessingConfig(
-                    effect = "passthrough",
-                    effectAmount = 0f,
-                    posterizeLevels = 6f,
-                )
+            require(rawNodes.size <= MAX_DIAGNOSTIC_NODES) {
+                "M0 Android GPU adapter supports at most $MAX_DIAGNOSTIC_NODES active nodes"
             }
 
-            val node = nodes.single() as? Map<*, *>
-                ?: error("processing node must be an object")
-            val nodeId = node["node_id"] as? String
-                ?: error("processing node requires node_id")
-            val type = (node["type"] as? String)?.uppercase()
-                ?: error("processing node $nodeId requires type")
-            val parameters = (node["parameters"] as? Map<*, *>)
-                ?: emptyMap<String, Any?>()
-
-            val amount = ((parameters["amount"] as? Number)?.toFloat() ?: 1f)
-                .coerceIn(0f, 1f)
-            val levels = ((parameters["levels"] as? Number)?.toFloat() ?: 6f)
-                .coerceIn(2f, 32f)
-
-            return when (type) {
-                "POSTER" -> DiagnosticProcessingConfig(
-                    effect = "posterize",
-                    effectAmount = amount,
-                    posterizeLevels = levels,
-                )
-                "GRAYSCALE" -> DiagnosticProcessingConfig(
-                    effect = "grayscale",
-                    effectAmount = amount,
-                    posterizeLevels = levels,
-                )
-                else -> error(
+            val parsed = rawNodes.mapIndexed { index, raw ->
+                val node = raw as? Map<*, *>
+                    ?: error("processing node at index $index must be an object")
+                val nodeId = node["node_id"] as? String
+                    ?: error("processing node at index $index requires node_id")
+                val type = (node["type"] as? String)?.uppercase()
+                    ?: error("processing node $nodeId requires type")
+                val order = (node["order"] as? Number)?.toInt()
+                    ?: error("processing node $nodeId requires order")
+                require(order == index) {
+                    "processing plan order must be contiguous; $nodeId has order=$order at index=$index"
+                }
+                require(type == "POSTER" || type == "GRAYSCALE") {
                     "unsupported processing node $type ($nodeId) for M0 Android GPU adapter"
+                }
+
+                val parameters = (node["parameters"] as? Map<*, *>)
+                    ?: emptyMap<String, Any?>()
+                val amount = ((parameters["amount"] as? Number)?.toFloat() ?: 1f)
+                    .coerceIn(0f, 1f)
+                val levels = ((parameters["levels"] as? Number)?.toFloat() ?: 6f)
+                    .coerceIn(2f, 32f)
+
+                DiagnosticProcessingNode(
+                    nodeId = nodeId,
+                    type = type,
+                    amount = amount,
+                    posterizeLevels = levels,
                 )
             }
+
+            return DiagnosticProcessingConfig(parsed)
         }
     }
 }
@@ -183,17 +187,13 @@ private data class DiagnosticProcessingConfig(
 private class PrismaGpuVideoView(
     context: Context,
     fit: String,
-    effect: String,
-    effectAmount: Float,
-    posterizeLevels: Float,
+    processingNodes: List<DiagnosticProcessingNode>,
     onSurfaceReady: (Surface, OesVideoRenderer) -> Unit,
 ) : GLSurfaceView(context) {
     private val videoRenderer = OesVideoRenderer(
         hostView = this,
         fit = fit,
-        effect = effect,
-        effectAmount = effectAmount,
-        posterizeLevels = posterizeLevels,
+        processingNodes = processingNodes,
         onSurfaceReady = onSurfaceReady,
     )
     private var released = false
@@ -216,16 +216,9 @@ private class PrismaGpuVideoView(
 private class OesVideoRenderer(
     private val hostView: GLSurfaceView,
     private val fit: String,
-    effect: String,
-    private val effectAmount: Float,
-    private val posterizeLevels: Float,
+    private val processingNodes: List<DiagnosticProcessingNode>,
     private val onSurfaceReady: (Surface, OesVideoRenderer) -> Unit,
 ) : GLSurfaceView.Renderer {
-    private val effectMode = when (effect) {
-        "grayscale" -> 1f
-        "posterize" -> 2f
-        else -> 0f
-    }
     private val vertices: FloatBuffer = floatBufferOf(
         -1f, -1f,
         1f, -1f,
@@ -239,6 +232,8 @@ private class OesVideoRenderer(
         1f, 1f,
     )
     private val textureMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
+    private val pingTextures = IntArray(2)
+    private val pingFramebuffers = IntArray(2)
 
     @Volatile
     private var frameAvailable = false
@@ -248,10 +243,16 @@ private class OesVideoRenderer(
 
     private var viewportWidth = 1
     private var viewportHeight = 1
-    private var textureId = 0
-    private var program = 0
+    private var intermediateWidth = 0
+    private var intermediateHeight = 0
+    private var externalTextureId = 0
+    private var inputProgram = 0
+    private var effectProgram = 0
     private var surfaceTexture: SurfaceTexture? = null
     private var surface: Surface? = null
+    private var externalTextureTracked = false
+    private var trackedPingTextures = 0
+    private var trackedFramebuffers = 0
     private var released = false
 
     fun setVideoAspectRatio(aspectRatio: Float) {
@@ -262,10 +263,14 @@ private class OesVideoRenderer(
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         if (released) return
-        program = buildProgram(VERTEX_SHADER, FRAGMENT_SHADER)
-        textureId = createExternalTexture()
 
-        val st = SurfaceTexture(textureId)
+        inputProgram = buildProgram(INPUT_VERTEX_SHADER, INPUT_FRAGMENT_SHADER)
+        effectProgram = buildProgram(EFFECT_VERTEX_SHADER, EFFECT_FRAGMENT_SHADER)
+        externalTextureId = createExternalTexture()
+        AndroidMediaResourceTracker.gpuTexturesAcquired()
+        externalTextureTracked = true
+
+        val st = SurfaceTexture(externalTextureId)
         st.setOnFrameAvailableListener {
             frameAvailable = true
             hostView.requestRender()
@@ -280,13 +285,18 @@ private class OesVideoRenderer(
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        viewportWidth = width.coerceAtLeast(1)
-        viewportHeight = height.coerceAtLeast(1)
+        val newWidth = width.coerceAtLeast(1)
+        val newHeight = height.coerceAtLeast(1)
+        if (newWidth != viewportWidth || newHeight != viewportHeight) {
+            releaseIntermediateTargets()
+        }
+        viewportWidth = newWidth
+        viewportHeight = newHeight
         GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        if (released || program == 0) return
+        if (released || inputProgram == 0 || externalTextureId == 0) return
 
         if (frameAvailable) {
             frameAvailable = false
@@ -296,18 +306,105 @@ private class OesVideoRenderer(
             }
         }
 
-        GLES20.glClearColor(0f, 0f, 0f, 1f)
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-        GLES20.glUseProgram(program)
+        if (processingNodes.isEmpty()) {
+            drawExternalInput(targetFramebuffer = 0)
+            return
+        }
 
-        val positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
-        val texCoordLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
-        val matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
-        val scaleLocation = GLES20.glGetUniformLocation(program, "uScale")
-        val textureLocation = GLES20.glGetUniformLocation(program, "uTexture")
-        val effectModeLocation = GLES20.glGetUniformLocation(program, "uEffectMode")
-        val effectAmountLocation = GLES20.glGetUniformLocation(program, "uEffectAmount")
-        val posterizeLevelsLocation = GLES20.glGetUniformLocation(program, "uPosterizeLevels")
+        ensureIntermediateTargets(viewportWidth, viewportHeight)
+
+        // Convert/sample the OES decoder texture once into a regular 2D texture.
+        // The input pass also resolves presentation geometry, so processing
+        // passes can operate full-screen on regular textures without raw-frame
+        // readback or exposing GL handles outside this adapter.
+        drawExternalInput(targetFramebuffer = pingFramebuffers[0])
+
+        var currentTextureIndex = 0
+        processingNodes.forEachIndexed { index, node ->
+            val isLast = index == processingNodes.lastIndex
+            val targetTextureIndex = 1 - currentTextureIndex
+            val targetFramebuffer = if (isLast) {
+                0
+            } else {
+                pingFramebuffers[targetTextureIndex]
+            }
+
+            drawEffectPass(
+                sourceTexture = pingTextures[currentTextureIndex],
+                targetFramebuffer = targetFramebuffer,
+                node = node,
+            )
+
+            if (!isLast) currentTextureIndex = targetTextureIndex
+        }
+    }
+
+    private fun drawExternalInput(targetFramebuffer: Int) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, targetFramebuffer)
+        prepareTarget()
+        GLES20.glUseProgram(inputProgram)
+
+        val positionLocation = GLES20.glGetAttribLocation(inputProgram, "aPosition")
+        val texCoordLocation = GLES20.glGetAttribLocation(inputProgram, "aTexCoord")
+        val matrixLocation = GLES20.glGetUniformLocation(inputProgram, "uTexMatrix")
+        val scaleLocation = GLES20.glGetUniformLocation(inputProgram, "uScale")
+        val textureLocation = GLES20.glGetUniformLocation(inputProgram, "uTexture")
+
+        bindQuad(positionLocation, texCoordLocation)
+
+        val scale = resolveFitScale(
+            fit = fit,
+            sourceAspect = videoAspectRatio,
+            viewportAspect = viewportWidth.toFloat() / viewportHeight.toFloat(),
+        )
+        GLES20.glUniform2f(scaleLocation, scale.first, scale.second)
+        GLES20.glUniformMatrix4fv(matrixLocation, 1, false, textureMatrix, 0)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTextureId)
+        GLES20.glUniform1i(textureLocation, 0)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+
+        unbindQuad(positionLocation, texCoordLocation)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+    }
+
+    private fun drawEffectPass(
+        sourceTexture: Int,
+        targetFramebuffer: Int,
+        node: DiagnosticProcessingNode,
+    ) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, targetFramebuffer)
+        prepareTarget()
+        GLES20.glUseProgram(effectProgram)
+
+        val positionLocation = GLES20.glGetAttribLocation(effectProgram, "aPosition")
+        val texCoordLocation = GLES20.glGetAttribLocation(effectProgram, "aTexCoord")
+        val textureLocation = GLES20.glGetUniformLocation(effectProgram, "uTexture")
+        val effectModeLocation = GLES20.glGetUniformLocation(effectProgram, "uEffectMode")
+        val effectAmountLocation = GLES20.glGetUniformLocation(effectProgram, "uEffectAmount")
+        val posterizeLevelsLocation = GLES20.glGetUniformLocation(effectProgram, "uPosterizeLevels")
+
+        bindQuad(positionLocation, texCoordLocation)
+        GLES20.glUniform1f(effectModeLocation, node.effectMode)
+        GLES20.glUniform1f(effectAmountLocation, node.amount)
+        GLES20.glUniform1f(posterizeLevelsLocation, node.posterizeLevels)
+
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, sourceTexture)
+        GLES20.glUniform1i(textureLocation, 0)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+
+        unbindQuad(positionLocation, texCoordLocation)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+    }
+
+    private fun bindQuad(positionLocation: Int, texCoordLocation: Int) {
+        require(positionLocation >= 0 && texCoordLocation >= 0) {
+            "required shader attributes are missing"
+        }
 
         vertices.position(0)
         GLES20.glEnableVertexAttribArray(positionLocation)
@@ -330,26 +427,118 @@ private class OesVideoRenderer(
             0,
             textureCoordinates,
         )
+    }
 
-        val scale = resolveFitScale(
-            fit = fit,
-            sourceAspect = videoAspectRatio,
-            viewportAspect = viewportWidth.toFloat() / viewportHeight.toFloat(),
-        )
-        GLES20.glUniform2f(scaleLocation, scale.first, scale.second)
-        GLES20.glUniformMatrix4fv(matrixLocation, 1, false, textureMatrix, 0)
-        GLES20.glUniform1f(effectModeLocation, effectMode)
-        GLES20.glUniform1f(effectAmountLocation, effectAmount)
-        GLES20.glUniform1f(posterizeLevelsLocation, posterizeLevels)
-
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-        GLES20.glUniform1i(textureLocation, 0)
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-
+    private fun unbindQuad(positionLocation: Int, texCoordLocation: Int) {
         GLES20.glDisableVertexAttribArray(positionLocation)
         GLES20.glDisableVertexAttribArray(texCoordLocation)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0)
+    }
+
+    private fun prepareTarget() {
+        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+    }
+
+    private fun ensureIntermediateTargets(width: Int, height: Int) {
+        if (
+            intermediateWidth == width &&
+            intermediateHeight == height &&
+            pingTextures.all { it != 0 } &&
+            pingFramebuffers.all { it != 0 }
+        ) {
+            return
+        }
+
+        releaseIntermediateTargets()
+
+        GLES20.glGenTextures(2, pingTextures, 0)
+        require(pingTextures.all { it != 0 }) { "failed to allocate ping-pong textures" }
+        AndroidMediaResourceTracker.gpuTexturesAcquired(2)
+        trackedPingTextures = 2
+
+        pingTextures.forEach { texture ->
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_MIN_FILTER,
+                GLES20.GL_LINEAR,
+            )
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_MAG_FILTER,
+                GLES20.GL_LINEAR,
+            )
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_WRAP_S,
+                GLES20.GL_CLAMP_TO_EDGE,
+            )
+            GLES20.glTexParameteri(
+                GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_WRAP_T,
+                GLES20.GL_CLAMP_TO_EDGE,
+            )
+            GLES20.glTexImage2D(
+                GLES20.GL_TEXTURE_2D,
+                0,
+                GLES20.GL_RGBA,
+                width,
+                height,
+                0,
+                GLES20.GL_RGBA,
+                GLES20.GL_UNSIGNED_BYTE,
+                null,
+            )
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+
+        GLES20.glGenFramebuffers(2, pingFramebuffers, 0)
+        require(pingFramebuffers.all { it != 0 }) { "failed to allocate ping-pong framebuffers" }
+        AndroidMediaResourceTracker.gpuFramebuffersAcquired(2)
+        trackedFramebuffers = 2
+
+        pingFramebuffers.forEachIndexed { index, framebuffer ->
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer)
+            GLES20.glFramebufferTexture2D(
+                GLES20.GL_FRAMEBUFFER,
+                GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D,
+                pingTextures[index],
+                0,
+            )
+            val status = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)
+            require(status == GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                "incomplete processing framebuffer[$index]: 0x${status.toString(16)}"
+            }
+        }
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+
+        intermediateWidth = width
+        intermediateHeight = height
+    }
+
+    private fun releaseIntermediateTargets() {
+        if (pingFramebuffers.any { it != 0 }) {
+            GLES20.glDeleteFramebuffers(2, pingFramebuffers, 0)
+            pingFramebuffers.fill(0)
+        }
+        if (trackedFramebuffers > 0) {
+            AndroidMediaResourceTracker.gpuFramebuffersReleased(trackedFramebuffers)
+            trackedFramebuffers = 0
+        }
+
+        if (pingTextures.any { it != 0 }) {
+            GLES20.glDeleteTextures(2, pingTextures, 0)
+            pingTextures.fill(0)
+        }
+        if (trackedPingTextures > 0) {
+            AndroidMediaResourceTracker.gpuTexturesReleased(trackedPingTextures)
+            trackedPingTextures = 0
+        }
+
+        intermediateWidth = 0
+        intermediateHeight = 0
     }
 
     fun release() {
@@ -362,13 +551,24 @@ private class OesVideoRenderer(
         surfaceTexture?.release()
         surfaceTexture = null
 
-        if (textureId != 0) {
-            GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
-            textureId = 0
+        releaseIntermediateTargets()
+
+        if (externalTextureId != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(externalTextureId), 0)
+            externalTextureId = 0
         }
-        if (program != 0) {
-            GLES20.glDeleteProgram(program)
-            program = 0
+        if (externalTextureTracked) {
+            AndroidMediaResourceTracker.gpuTexturesReleased()
+            externalTextureTracked = false
+        }
+
+        if (inputProgram != 0) {
+            GLES20.glDeleteProgram(inputProgram)
+            inputProgram = 0
+        }
+        if (effectProgram != 0) {
+            GLES20.glDeleteProgram(effectProgram)
+            effectProgram = 0
         }
     }
 
@@ -466,7 +666,7 @@ private class OesVideoRenderer(
     }
 
     companion object {
-        private const val VERTEX_SHADER = """
+        private const val INPUT_VERTEX_SHADER = """
             attribute vec4 aPosition;
             attribute vec4 aTexCoord;
             uniform mat4 uTexMatrix;
@@ -478,10 +678,29 @@ private class OesVideoRenderer(
             }
         """
 
-        private const val FRAGMENT_SHADER = """
+        private const val INPUT_FRAGMENT_SHADER = """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             uniform samplerExternalOES uTexture;
+            varying vec2 vTexCoord;
+            void main() {
+                gl_FragColor = texture2D(uTexture, vTexCoord);
+            }
+        """
+
+        private const val EFFECT_VERTEX_SHADER = """
+            attribute vec4 aPosition;
+            attribute vec4 aTexCoord;
+            varying vec2 vTexCoord;
+            void main() {
+                gl_Position = aPosition;
+                vTexCoord = aTexCoord.xy;
+            }
+        """
+
+        private const val EFFECT_FRAGMENT_SHADER = """
+            precision mediump float;
+            uniform sampler2D uTexture;
             uniform float uEffectMode;
             uniform float uEffectAmount;
             uniform float uPosterizeLevels;
