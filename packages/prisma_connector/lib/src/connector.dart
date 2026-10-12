@@ -6,6 +6,27 @@ enum ConnectorTransport { lanWifi, usbCable, legacyEsp32, mock }
 
 enum ConnectorState { disconnected, discovering, connecting, authenticating, ready, degraded, failed }
 
+/// Transport-level connector failure shared by Protocol 2.0, legacy HTTP and
+/// future USB/network adapters. Product code can reason about retryability
+/// without depending on one protocol implementation.
+class ConnectorTransportException implements Exception {
+  ConnectorTransportException({
+    required this.operation,
+    required this.message,
+    required this.retryable,
+    this.cause,
+  });
+
+  final String operation;
+  final String message;
+  final bool retryable;
+  final Object? cause;
+
+  @override
+  String toString() =>
+      'ConnectorTransportException($operation, retryable=$retryable): $message';
+}
+
 class DiscoveryRecord {
   const DiscoveryRecord({
     required this.deviceId,
