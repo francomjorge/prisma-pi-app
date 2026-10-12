@@ -23,7 +23,14 @@ class PrismaMockApplianceServer {
   DeviceDescriptor? _device;
   final Set<WebSocket> _eventClients = <WebSocket>{};
 
+  Duration _responseLatency = Duration.zero;
+  String? _failNextPath;
+  int _failNextStatus = HttpStatus.serviceUnavailable;
+  String _failNextCode = 'MOCK_INJECTED_FAILURE';
+  bool _failNextRetryable = true;
+
   bool get isRunning => _server != null;
+  int get eventClientCount => _eventClients.length;
 
   Uri get baseUri {
     final server = _server;
@@ -76,20 +83,49 @@ class PrismaMockApplianceServer {
     await _eventSubscription?.cancel();
     _eventSubscription = null;
 
-    final sockets = List<WebSocket>.of(_eventClients);
-    _eventClients.clear();
-    for (final socket in sockets) {
-      try {
-        await socket.close(WebSocketStatus.normalClosure, 'server shutdown');
-      } catch (_) {
-        // Best-effort test cleanup.
-      }
-    }
+    await disconnectEventClients(reason: 'server shutdown');
 
     if (server != null) {
       await server.close(force: true);
     }
     await backend.disconnect();
+  }
+
+  /// Adds deterministic latency before every HTTP/WebSocket endpoint handler.
+  void setResponseLatency(Duration latency) {
+    if (latency.isNegative) throw ArgumentError.value(latency, 'latency');
+    _responseLatency = latency;
+  }
+
+  /// Makes the next request to [path] fail once, then automatically clears the
+  /// injected fault.
+  void failNextRequest(
+    String path, {
+    int statusCode = HttpStatus.serviceUnavailable,
+    String code = 'MOCK_INJECTED_FAILURE',
+    bool retryable = true,
+  }) {
+    if (!path.startsWith('/')) throw ArgumentError.value(path, 'path');
+    _failNextPath = path;
+    _failNextStatus = statusCode;
+    _failNextCode = code;
+    _failNextRetryable = retryable;
+  }
+
+  /// Forces all current event WebSockets closed while keeping HTTP alive.
+  /// A resilient client should reconnect, re-authenticate and resynchronize.
+  Future<void> disconnectEventClients({
+    String reason = 'injected event transport failure',
+  }) async {
+    final sockets = List<WebSocket>.of(_eventClients);
+    _eventClients.clear();
+    for (final socket in sockets) {
+      try {
+        await socket.close(WebSocketStatus.goingAway, reason);
+      } catch (_) {
+        // Best-effort fault injection / cleanup.
+      }
+    }
   }
 
   void injectGenerationGap({int skipped = 1}) {
@@ -109,6 +145,22 @@ class PrismaMockApplianceServer {
   Future<void> _handle(HttpRequest request) async {
     try {
       final path = request.uri.path;
+
+      if (_responseLatency > Duration.zero) {
+        await Future<void>.delayed(_responseLatency);
+      }
+
+      if (_failNextPath == path) {
+        _failNextPath = null;
+        return _sendJson(request, _failNextStatus, {
+          'ok': false,
+          'error': {
+            'code': _failNextCode,
+            'message': 'Injected Mock Appliance failure for $path',
+            'retryable': _failNextRetryable,
+          }
+        });
+      }
 
       if (request.method == 'GET' && path == '/healthz') {
         return _sendJson(request, HttpStatus.ok, {
