@@ -189,3 +189,60 @@ This gate additionally validates in CI:
 This proves the **software boundary and build integration**, not physical GPU execution. It does not yet prove decoded frames traverse the POSTER shader correctly on a phone, that the path is zero-copy on a particular device, or that a multi-node chain can run without CPU readback.
 
 The Android diagnostic adapter is intentionally capped at one active processing node. The next GPU implementation gate is ordered multi-pass execution with native ping-pong render targets while keeping framebuffer/texture identifiers out of the domain/runtime contract.
+
+---
+
+## 2026-10-12 — Ordered ping-pong GPU processing build gate
+
+Validated head commit:
+
+```text
+d9378c513c7065b0d581aba939ffff38d937b75c
+```
+
+GitHub Actions workflow run:
+
+```text
+foundation-validation #241
+run_id: 38276485418
+```
+
+All eight jobs completed successfully:
+
+```text
+domain                        SUCCESS
+security-contracts            SUCCESS
+storage-runtime               SUCCESS
+media-runtime-contract        SUCCESS
+processing-runtime            SUCCESS
+connector-session             SUCCESS
+network-protocol-integration  SUCCESS
+android-stack-spike           SUCCESS
+```
+
+This gate additionally validates in CI:
+
+- a two-node diagnostic `ProcessingGraph` compiled into the ordered local plan `POSTER → GRAYSCALE`;
+- explicit plan-order tests showing `ProcessingGraph.reorder(...)` changes emitted node order deterministically;
+- bypass tests proving an active supported node is removed and the remaining plan is renumbered contiguously;
+- Android schema-v1 plan parsing with contiguous-order validation and fail-closed unsupported-node behavior;
+- one OES decoder/input pass followed by normal 2D-texture processing passes;
+- allocation and API-level compilation of two reusable RGBA ping-pong textures plus two FBOs;
+- ordered effect-pass iteration with the final pass rendering directly to the native output target;
+- framebuffer completeness checks in the Android native adapter;
+- explicit process-local GPU texture and framebuffer accounting;
+- diagnostic Flutter exposure of decoder/surface/GPU texture/FBO resource counters;
+- complete disposable Android debug APK build with the ordered Media3 → OES → ping-pong GPU processing path.
+
+This is **build/static integration evidence for the native Android path**, not physical GPU-runtime evidence. GitHub Actions does not execute the Android GPU driver used by a phone.
+
+This gate therefore does not prove:
+
+- decoded frames visibly traverse POSTER then GRAYSCALE on a physical device;
+- reversing the plan changes physical visual output as expected;
+- bypass removes exactly one live GPU pass on-device;
+- the path is zero-copy for a particular codec/device implementation;
+- GPU texture/FBO counters correspond to correctly released driver memory after repeated lifecycle changes;
+- sustained playback is free of memory growth, dropped-frame regressions or thermal problems.
+
+Those are explicit physical-device M0 acceptance gates and must remain separate from CI evidence.
