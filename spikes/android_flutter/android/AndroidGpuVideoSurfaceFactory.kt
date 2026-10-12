@@ -63,8 +63,8 @@ private class AndroidGpuVideoPlatformView(
     private val gpuView = PrismaGpuVideoView(
         context = context,
         fit = fit,
-        onSurfaceReady = { surface, renderer ->
-            if (disposed || player != null) return@PrismaGpuVideoView
+        onSurfaceReady = surfaceReady@{ surface, renderer ->
+            if (disposed || player != null) return@surfaceReady
             require(File(path).isFile) { "GPU video path does not exist: $path" }
 
             val exo = ExoPlayer.Builder(context).build().apply {
