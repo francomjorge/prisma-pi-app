@@ -41,6 +41,7 @@ A later status includes evidence from previous stages only when that evidence ac
 | Android native media metadata probe | BUILT | M0 bridge compiles image/video metadata probing with `BitmapFactory` / `MediaMetadataRetriever`; real-device codec/format coverage pending. |
 | Media presentation/aspect contract | RUNTIME_VERIFIED | Platform-neutral contain/cover/fill/fit-width/fit-height/native-pixel/scale-down semantics plus bounded decode-size planning pass deterministic tests. |
 | Media resource-budget contract | RUNTIME_VERIFIED | Byte/decoder/render-surface budgets, pressure levels, release policy and explicit `MediaResourceRegistry` ownership/lease behavior pass tests. Device-specific limits remain unmeasured. |
+| Native GPU diagnostic accounting | BUILT_SPIKE | Android diagnostic counters now include active OES/2D GPU textures and ping-pong framebuffers and are exposed by the M0 resource probe. Correct device-side allocation/release still requires hardware validation. |
 | UI/media library strategy | DESIGNED | ADR-004 keeps Flutter UI, optional image/UI helpers and Android Media3/platform decoders behind PRISMA-owned boundaries; no third-party library is allowed to own core architecture. |
 | Cloud account identity | DESIGNED + PARTIAL_IMPLEMENTATION | Provider-independent account/domain model implemented; Google production flow/backend not implemented. |
 | Google Android sign-in | DESIGNED | Credential Manager / Sign in with Google selected as preferred Android path; production OAuth configuration intentionally not frozen during M0. |
@@ -56,11 +57,11 @@ A later status includes evidence from previous stages only when that evidence ac
 | Account vs appliance trust separation | DESIGNED | Cloud identity and local appliance pairing are separate trust domains. |
 | Local image decode | BUILT_SPIKE | Target-sized native still-image decode/render path compiles with modern `ImageDecoder` plus `BitmapFactory` fallback. Physical format/performance validation pending. |
 | Local looping video decode | BUILT_SPIKE | Media3 repeat/seek-capable local-video path and explicit player disposal compile into the Android APK. Sustained physical playback validation pending. |
-| Android GPU texture video path | BUILT_SPIKE | Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → GLSL compiles with neutral processing-plan input. Actual frame delivery, copy behavior, memory and thermal characteristics require hardware validation. |
+| Android GPU texture video path | BUILT_SPIKE | Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → native input pass → reusable 2D ping-pong targets compiles into the Android APK. Actual frame delivery, copy behavior, memory and thermal characteristics require hardware validation. |
 | Media endpoint negotiation | PARTIAL_IMPLEMENTATION | Endpoint model, Protocol 2.0 decode and session acquisition implemented; platform media transport selection/runtime pending. |
-| Processing graph contract | STATICALLY_VERIFIED | Ordered authoritative `ProcessingGraph`, node reorder semantics and execution-target contracts pass domain tests. |
+| Processing graph contract | STATICALLY_VERIFIED | Ordered authoritative `ProcessingGraph`, execution-target filtering, reorder semantics and bypass behavior pass domain/runtime tests. |
 | Processing runtime adapter | STATICALLY_VERIFIED | `prisma_processing_runtime` compiles MOBILE/BOTH graph nodes into deterministic schema-v1 plans, enforces capabilities/node limits and defines opaque backend session contracts without platform SDK types. |
-| GPU processing stage | BUILT_SPIKE | Android M0 consumes the neutral plan and maps diagnostic `POSTER` / `GRAYSCALE` nodes into the OES/GLSL stage. APK build is verified; physical frame execution and multi-pass chaining are not. |
+| Ordered GPU processing stage | BUILT_SPIKE | Android M0 consumes the neutral plan, converts the OES decoder texture once, alternates ordered passes through two private 2D texture/FBO targets, and currently maps `POSTER` and `GRAYSCALE`. APK build is verified; physical multi-pass execution is not. |
 | Skin/token system | DESIGNED | Contract defined; schema implementation pending. |
 | Input/keyboard action layer | PARTIAL_IMPLEMENTATION | M0 spike includes keyboard/native bridge diagnostics; product action layer pending. |
 | Android app shell | BUILT_SPIKE | Diagnostic M0 Flutter/Kotlin shell builds as debug APK; product UI remains blocked. |
@@ -73,8 +74,8 @@ A later status includes evidence from previous stages only when that evidence ac
 Latest fully green code + integration gate:
 
 ```text
-7545dee1564bf2613a7136d94fc30c4176f94a18
-foundation-validation run #234 / 38274554710
+d9378c513c7065b0d581aba939ffff38d937b75c
+foundation-validation run #241 / 38276485418
 ```
 
 All eight jobs passed on that exact head:
@@ -90,22 +91,22 @@ network-protocol-integration
 android-stack-spike
 ```
 
-This gate covers durable SQLite tests, local-media contracts, aspect/resolution policy, resource ownership, the neutral processing compiler/adapter contracts, Android managed-media source compilation, Media3 playback, SurfaceTexture/OES processing-plan integration, diagnostic POSTER/GRAYSCALE shader mapping and the complete debug APK build.
+This gate covers the previous foundation plus the ordered native GPU processing increment: `ProcessingPlan` reorder/bypass tests, a two-node diagnostic plan, private ping-pong 2D textures/framebuffers, OES input conversion, ordered POSTER → GRAYSCALE passes, explicit GPU texture/FBO accounting, resource counters exposed through the M0 diagnostic probe, and a complete debug APK build.
 
-The next commit only records this evidence/documentation; its current CI run does not extend the implementation evidence above.
+This is still build/static evidence for the Android GPU path, not physical execution evidence. CI does not execute a phone GPU driver or prove zero-copy behavior, visual output correctness, decoder/SurfaceTexture lifecycle under Android backgrounding, memory stability or thermal behavior.
 
-This is not physical Android or ESP32 evidence. Android NSD/Keystore/ContentResolver/media behavior, actual OES frame delivery through POSTER/GRAYSCALE, GPU copy behavior and the Legacy ESP32 connector still require target-hardware validation.
+Android NSD/Keystore/ContentResolver/media behavior, actual OES frame delivery through the two-node chain, GPU allocation/release behavior and the Legacy ESP32 connector still require target-hardware validation.
 
 CI concurrency cancels obsolete in-progress PR runs so only the newest revision matters for branch health, while recorded evidence remains tied to the exact validated commit.
 
 ## Next coherent work packages
 
-1. implement a diagnostic ordered multi-pass Android GPU chain using native ping-pong render targets (`OES input → FBO A → node 1 → FBO B → node 2 → output`) without exposing GL texture/FBO identifiers to Dart/domain code;
-2. prove two nodes execute in `ProcessingPlan` order, graph reorder changes execution order, and bypass removes one pass deterministically;
-3. extend native diagnostic resource accounting to intermediate textures/framebuffers and prove plan replacement/release returns ownership to baseline;
-4. run Android M0 on a physical device and validate Media3 → OES frame delivery, POSTER/GRAYSCALE visual output, `NsdManager`, local-network permission behavior, Keystore restart behavior, keyboard input, ContentResolver imports and SQLite persistence;
-5. stress repeated image/video source switching and processing-plan recreation while recording Java/native/GPU memory, decoder/surface counts and dropped frames;
-6. run a sustained 30+ minute processed-video loop plus background/foreground and rotation cycles; record thermal and memory behavior;
+1. make the M0 debug APK a retained CI artifact so the exact validated diagnostic build can be installed on a physical Android device without rebuilding it elsewhere;
+2. run the physical Android M0 acceptance sequence: Media3 → OES frame delivery, POSTER → GRAYSCALE output, resource counters, NSD, Keystore restart behavior, keyboard input, ContentResolver imports and SQLite persistence;
+3. add a controlled physical reorder/bypass diagnostic and prove the visible GPU pass order matches `ProcessingPlan` order without CPU readback;
+4. stress repeated image/video source switching and processing-session recreation while recording Java/native/GPU memory, decoder/surface/texture/FBO counts and dropped frames;
+5. run a sustained 30+ minute processed-video loop plus background/foreground and rotation cycles; record thermal and memory behavior;
+6. only after that device baseline, implement production-shaped `updatePlan(...)` behavior instead of rebuilding processing state blindly;
 7. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
 8. align production parameter semantics for PIXEL/GLITCH/POSTER/HUE/MIRROR with PRISMA Core before expanding the native effect family;
 9. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
