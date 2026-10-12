@@ -88,6 +88,7 @@ jobs:
           mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
           cp spikes/android_flutter/android/MainActivity.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/MainActivity.kt
           cp spikes/android_flutter/android/NsdDiscoveryBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/NsdDiscoveryBridge.kt
+          cp spikes/android_flutter/android/KeystoreSecretBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/KeystoreSecretBridge.kt
       - name: Analyze spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter analyze
