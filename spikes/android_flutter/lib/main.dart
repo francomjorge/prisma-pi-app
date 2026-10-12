@@ -27,7 +27,11 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
   String lastKey = 'none';
   String discoveryState = 'not started';
   String mediaImportState = 'not tested';
+  String resourceState = 'not sampled';
   bool mediaImportBusy = false;
+  bool nativeSurfaceVisible = false;
+  int nativeSurfaceGeneration = 0;
+  AndroidMediaImportDiagnosticResult? activeMedia;
   StreamSubscription<dynamic>? discoverySubscription;
 
   @override
@@ -65,6 +69,23 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
     }
   }
 
+  Future<void> probeResources() async {
+    try {
+      final result = await mediaChannel.invokeMapMethod<String, dynamic>(
+        'resourceSnapshot',
+      );
+      if (!mounted) return;
+      setState(() {
+        resourceState = 'images=${result?['decoded_image_bytes'] ?? '?'} B · '
+            'decoders=${result?['active_video_decoders'] ?? '?'} · '
+            'surfaces=${result?['active_render_surfaces'] ?? '?'}';
+      });
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() => resourceState = 'resource error: ${error.code}');
+    }
+  }
+
   Future<void> pickAndImportMedia() async {
     if (mediaImportBusy) return;
     setState(() {
@@ -83,12 +104,17 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
 
         final asset = diagnostic.asset;
         final decode = diagnostic.decodeProbe;
+        activeMedia = diagnostic;
+        nativeSurfaceGeneration += 1;
+        nativeSurfaceVisible = true;
         mediaImportState = '${asset.type.name}: ${asset.displayName} · '
             '${asset.width ?? '?'}x${asset.height ?? '?'} · '
             '${asset.byteSize} bytes · SHA-256 ${asset.contentHash.value.substring(0, 12)}… · '
             'decode=${decode['backend'] ?? '?'} '
             '${decode['width'] ?? '?'}x${decode['height'] ?? '?'}';
       });
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (mounted) await probeResources();
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() => mediaImportState = 'platform error: ${error.code}');
@@ -98,6 +124,21 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
     } finally {
       if (mounted) setState(() => mediaImportBusy = false);
     }
+  }
+
+  void releaseNativeSurface() {
+    setState(() => nativeSurfaceVisible = false);
+    Future<void>.delayed(const Duration(milliseconds: 250)).then((_) {
+      if (mounted) probeResources();
+    });
+  }
+
+  void reopenNativeSurface() {
+    if (activeMedia == null) return;
+    setState(() {
+      nativeSurfaceGeneration += 1;
+      nativeSurfaceVisible = true;
+    });
   }
 
   void startDiscoveryProbe() {
@@ -157,6 +198,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 Text('Last hardware key: $lastKey'),
                 Text('NSD: $discoveryState'),
                 Text('SAF managed import: $mediaImportState'),
+                Text('Native resources: $resourceState'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: probeNativeBoundary,
@@ -174,6 +216,51 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                   onPressed: mediaImportBusy ? null : pickAndImportMedia,
                   child: const Text('Pick + import + decode image/video'),
                 ),
+                ElevatedButton(
+                  onPressed: probeResources,
+                  child: const Text('Sample native media resources'),
+                ),
+                if (activeMedia != null) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed:
+                              nativeSurfaceVisible ? releaseNativeSurface : reopenNativeSurface,
+                          child: Text(
+                            nativeSurfaceVisible
+                                ? 'Release native surface'
+                                : 'Reopen native surface',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (activeMedia != null && nativeSurfaceVisible) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 240,
+                    child: AndroidView(
+                      key: ValueKey(
+                        '${activeMedia!.managedPath}-$nativeSurfaceGeneration',
+                      ),
+                      viewType: 'prisma.pi/native_media_surface',
+                      creationParamsCodec: const StandardMessageCodec(),
+                      creationParams: {
+                        'path': activeMedia!.managedPath,
+                        'kind': activeMedia!.asset.type.name,
+                        'fit': 'contain',
+                        'target_width': 1280,
+                        'target_height': 720,
+                        'autoplay': true,
+                        'loop': true,
+                        'muted': true,
+                      },
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 36),
                 const Text('Diagnostic harness only — not product UI.'),
               ],
