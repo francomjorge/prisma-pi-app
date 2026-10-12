@@ -34,10 +34,10 @@ Map<String, Object?> buildDiagnosticProcessingPlan() {
         'levels': 6,
       },
       executionTarget: ProcessingExecutionTarget.mobile,
-      requiredCapabilities: const {
+      requiredCapabilities: const [
         'gpu.external_texture',
         'gpu.fragment_shader',
-      },
+      ],
       order: 0,
     ),
   ]);
