@@ -12,6 +12,8 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `protocol/PROTOCOL-2.0.md` — mobile ↔ appliance discovery, control, events, capabilities, media negotiation and compatibility.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
+- `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
+- `accounts/GOOGLE-AUTH-SETUP-CHECKLIST.md` — production Google Auth/Android signing configuration checklist; intentionally deferred until final package/signing identity is chosen.
 - `SECURITY-PAIRING.md` — appliance trust, pairing, credential handling and production transport-security constraints. Account login is a separate trust domain.
 - `MEDIA-LIVE-VIEW.md` — source/processed/program media semantics and endpoint selection.
 - `UI-SKIN-CONTRACT.md` — UI boundaries, design tokens, skins and input abstraction; no concrete production screens yet.
