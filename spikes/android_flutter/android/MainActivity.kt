@@ -2,11 +2,13 @@ package com.prismapi.prisma_mobile_spike
 
 import android.app.Activity
 import android.content.Intent
+import androidx.media3.common.util.UnstableApi
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
+@UnstableApi
 class MainActivity : FlutterActivity() {
     companion object {
         private const val MEDIA_PICK_REQUEST_CODE = 41021
@@ -17,6 +19,11 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "prisma.pi/native_media_surface",
+            AndroidMediaSurfaceFactory(this),
+        )
 
         val mediaBridge = AndroidMediaBridge(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "prisma.pi/media")
@@ -31,6 +38,9 @@ class MainActivity : FlutterActivity() {
                                 "files_dir" to filesDir.absolutePath,
                                 "cache_dir" to cacheDir.absolutePath,
                             )
+                        )
+                        "resourceSnapshot" -> result.success(
+                            AndroidMediaResourceTracker.snapshot()
                         )
                         "pickMedia" -> launchMediaPicker(result)
                         "inspectUri" -> {
