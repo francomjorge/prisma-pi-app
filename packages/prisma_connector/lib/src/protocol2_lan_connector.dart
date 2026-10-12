@@ -317,7 +317,7 @@ class Protocol2LanConnector implements PrismaConnector {
       final uri = _baseUri!.replace(path: path, query: null);
       final request = await _http.openUrl(method, uri).timeout(requestTimeout);
       request.headers.contentType = ContentType.json;
-      request.headers.accept.add(ContentType.json);
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
       if (authenticated) {
         request.headers.set(
           HttpHeaders.authorizationHeader,
