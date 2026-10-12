@@ -73,14 +73,21 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
     });
 
     try {
-      final asset = await mediaImportDiagnostic.pickAndImport();
+      final diagnostic = await mediaImportDiagnostic.pickAndImport();
       if (!mounted) return;
       setState(() {
-        mediaImportState = asset == null
-            ? 'picker cancelled'
-            : '${asset.type.name}: ${asset.displayName} · '
-                '${asset.width ?? '?'}x${asset.height ?? '?'} · '
-                '${asset.byteSize} bytes · SHA-256 ${asset.contentHash.value.substring(0, 12)}…';
+        if (diagnostic == null) {
+          mediaImportState = 'picker cancelled';
+          return;
+        }
+
+        final asset = diagnostic.asset;
+        final decode = diagnostic.decodeProbe;
+        mediaImportState = '${asset.type.name}: ${asset.displayName} · '
+            '${asset.width ?? '?'}x${asset.height ?? '?'} · '
+            '${asset.byteSize} bytes · SHA-256 ${asset.contentHash.value.substring(0, 12)}… · '
+            'decode=${decode['backend'] ?? '?'} '
+            '${decode['width'] ?? '?'}x${decode['height'] ?? '?'}';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -165,7 +172,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 ),
                 ElevatedButton(
                   onPressed: mediaImportBusy ? null : pickAndImportMedia,
-                  child: const Text('Pick + import image/video'),
+                  child: const Text('Pick + import + decode image/video'),
                 ),
                 const SizedBox(height: 36),
                 const Text('Diagnostic harness only — not product UI.'),
