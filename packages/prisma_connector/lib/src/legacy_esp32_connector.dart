@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:prisma_domain/prisma_domain.dart';
 
 import 'connector.dart';
+import 'protocol2_lan_connector.dart' show Protocol2TransportException;
 
 /// Compatibility adapter for the protected current ESP32-S3 web baseline.
 ///
