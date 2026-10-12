@@ -1,13 +1,13 @@
 # PRISMA-PI App — Processing Runtime Adapter
 
-**Status:** IMPLEMENTED_PENDING_CURRENT_CI / physical GPU validation pending  
-**Scope:** platform-neutral processing-plan boundary plus Android M0 adapter proof
+**Status:** platform-neutral runtime STATICALLY_VERIFIED / Android ordered multi-pass BUILT_SPIKE / physical GPU validation pending  
+**Scope:** platform-neutral processing-plan boundary plus Android M0 execution-adapter proof
 
 ## Purpose
 
 PRISMA needs one ordered processing model that can execute on different backends without making product state depend on OpenGL ES, Vulkan, Metal, browser canvas or any specific decoder API.
 
-The processing boundary is therefore split into three layers:
+The processing boundary is split into these layers:
 
 ```text
 PrismaState / ProcessingGraph
@@ -69,9 +69,18 @@ Unsupported active nodes fail closed by default. They are never silently ignored
 
 An explicit `UnsupportedNodePolicy.bypass` exists for controlled compatibility/degraded modes. When used, every skipped node produces a diagnostic.
 
+Automated tests now explicitly prove that:
+
+- compiled node order follows the authoritative domain graph;
+- `ProcessingGraph.reorder(...)` changes the emitted plan order deterministically;
+- bypass removes a supported node while the remaining nodes are renumbered contiguously;
+- backend capability and node-count limits remain enforced.
+
+These tests prove plan semantics, not visual Android GPU output.
+
 ## ProcessingPlan schema v1
 
-The platform boundary currently serializes a plan as control data only:
+The platform boundary serializes a plan as control data only:
 
 ```text
 {
@@ -149,68 +158,131 @@ Media3 decoder
         ↓
 SurfaceTexture / GL_TEXTURE_EXTERNAL_OES
         ↓
-GLSL diagnostic processing
+OES input/aspect pass
+        ↓
+2D texture / FBO A
+        ↓
+ordered node pass
+        ↓
+2D texture / FBO B
+        ↓
+ordered node pass
+        ↓
+...
         ↓
 native render target
 ```
 
-The M0 Android adapter currently advertises only:
+The native adapter owns all OpenGL resource identifiers. No texture name or framebuffer ID enters Dart, `ProcessingPlan`, `PrismaState` or portable project state.
 
-```text
-POSTER
-GRAYSCALE
-```
+## Ordered ping-pong implementation
 
-and accepts at most one active node. This limit is intentional. The goal is to validate the architecture before implementing a production multi-pass chain.
+The Android diagnostic adapter now allocates two reusable RGBA 2D textures and two framebuffers when at least one processing node is active.
 
-The current POSTER diagnostic parameters are:
-
-```text
-amount = 0.85
-levels = 6
-```
-
-The Android adapter parses the schema-versioned plan and rejects unknown node types instead of falling back silently.
-
-## Next GPU-runtime step
-
-The next implementation increment is an ordered multi-pass GPU chain.
-
-For effects that cannot be fused safely into one shader, the expected topology is:
+The execution rule is:
 
 ```text
 OES decoder texture
     ↓
-input conversion/sample pass
+input pass → FBO A
     ↓
-FBO texture A
+node 0 → FBO B
     ↓
-node 1
+node 1 → FBO A
     ↓
-FBO texture B
-    ↓
-node 2
-    ↓
-FBO texture A
+node 2 → FBO B
     ↓
 ...
     ↓
-program output / preview sink
+last node → screen
 ```
 
-This ping-pong ownership must remain behind the native adapter. The domain/runtime plan must not expose OpenGL framebuffer IDs.
+Only two intermediate render targets are needed regardless of diagnostic chain length because source and destination alternate. The final node renders directly to the native output target.
 
-Before adding the full FX family, prove at least:
+The input pass performs the `SurfaceTexture` transform and presentation fit before the regular 2D effect passes. Subsequent passes therefore sample normal `sampler2D` textures rather than the external OES texture.
 
-1. two ordered nodes execute in the requested order;
-2. reorder changes output deterministically;
-3. bypass removes one pass without rebuilding unrelated product state;
-4. resource ownership returns to baseline after plan replacement;
-5. no CPU readback is required for the normal video path.
+The current M0 parser:
+
+- requires `schema_version == 1`;
+- requires contiguous `order` values matching the received node list;
+- rejects unknown node types;
+- supports at most four active diagnostic nodes;
+- currently maps only `POSTER` and `GRAYSCALE`;
+- never silently falls back when an active node is unsupported.
+
+## Current two-node diagnostic plan
+
+The Android spike now compiles this domain graph through the neutral runtime:
+
+```text
+0  POSTER
+   amount = 0.85
+   levels = 6
+
+1  GRAYSCALE
+   amount = 0.35
+```
+
+The native GPU adapter consumes exactly that emitted order.
+
+This is deliberately a diagnostic chain. The parameter vocabulary for the production FX family is not frozen by this spike.
+
+## GPU resource ownership
+
+`AndroidMediaResourceTracker` now includes process-local counters for:
+
+```text
+active_gpu_textures
+active_gpu_framebuffers
+```
+
+The diagnostic UI exposes those counters beside decoded-image, decoder and render-surface counters.
+
+The GPU adapter accounts for:
+
+- the external OES decoder texture;
+- the two ping-pong 2D textures;
+- the two ping-pong framebuffers;
+- input and effect shader programs through explicit native ownership;
+- `SurfaceTexture` and decoder `Surface` lifecycle.
+
+Intermediate textures/framebuffers are recreated when viewport dimensions change and released when the platform view is disposed.
+
+This instrumentation is intended to make repeated open/release and plan-recreation leaks visible during physical M0 testing. CI cannot prove that Android actually allocates/releases the underlying GPU memory correctly on a device.
+
+## CI evidence boundary
+
+The green Android gate proves:
+
+- Dart graph compiler analysis/tests;
+- order/reorder/bypass plan tests;
+- Kotlin parser/API compilation;
+- GLES2 texture/FBO API compilation;
+- Media3 + OES + ping-pong shader path compilation;
+- Flutter diagnostic host analysis/tests;
+- complete debug APK build.
+
+It does not execute an Android GPU driver.
+
+## Physical-device acceptance gate
+
+Before the multi-pass path can become `HARDWARE_TESTED`, validate on Android hardware:
+
+1. H.264/MP4 reaches the OES texture and renders through both diagnostic passes;
+2. POSTER → GRAYSCALE output is visually correct;
+3. reversing the plan order produces the corresponding different execution order;
+4. bypassing either node removes exactly one GPU pass;
+5. no CPU image-buffer/readback path is required during normal playback;
+6. `active_gpu_textures` / `active_gpu_framebuffers` return to baseline after close/reopen cycles;
+7. viewport/rotation changes recreate intermediate targets without monotonic resource growth;
+8. background/foreground does not leave stale decoder, SurfaceTexture, texture or FBO ownership;
+9. 30+ minute processed loop has no monotonic Java/native/GPU memory growth;
+10. dropped frames and thermal behavior are recorded;
+11. corrupt/unsupported sources do not poison the next GPU session.
 
 ## Effect-family direction
 
-The runtime is generic enough to host the planned local chain:
+The runtime remains generic enough to host the planned local chain:
 
 ```text
 PIXEL
@@ -224,17 +296,27 @@ compositing
 future generators
 ```
 
-This document does not yet freeze their parameter schemas. Shared effect semantics belong in the product/domain contract and must be aligned with PRISMA Core before production implementation.
+Shared parameter semantics must be aligned with PRISMA Core before the production implementation expands this family. Browser FX prototypes remain behavioral references only; their canvas implementation is not a native-runtime dependency.
 
-Browser FX prototypes remain behavioral references only; their canvas implementation is not a native-runtime dependency.
+## Next processing-runtime step
+
+The architecture needed for ordered multi-pass execution is now present and builds. The next meaningful gates are:
+
+1. physical validation of the two-node chain and GPU resource lifecycle;
+2. production-shaped plan replacement/update semantics after device behavior is measured;
+3. effect-parameter alignment with Core;
+4. only then expansion to PIXEL/GLITCH/HUE/MIRROR and compositing nodes.
+
+Do not add more effect types merely to increase feature count before the runtime path is physically validated.
 
 ## Non-claims
 
 This increment does not yet prove:
 
-- multi-node GPU execution;
-- zero-copy on every Android codec/device;
-- dynamic graph update on a physical phone;
+- that decoded frames actually traverse both passes on a physical phone;
+- zero-copy behavior on every Android codec/device;
+- physical reorder/bypass output correctness;
+- dynamic plan updates without session recreation;
 - production Vulkan versus OpenGL ES selection;
 - Metal implementation on iOS;
 - HDR/color-management correctness;
