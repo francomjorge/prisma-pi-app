@@ -51,7 +51,7 @@ jobs:
       - name: Analyze
         working-directory: packages/prisma_storage
         run: dart analyze --fatal-infos
-      - name: Test transactional imports and recovery
+      - name: Test transactional imports, SQLite metadata and recovery
         working-directory: packages/prisma_storage
         run: dart test
 
@@ -104,6 +104,7 @@ jobs:
           cp spikes/android_flutter/android/MainActivity.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/MainActivity.kt
           cp spikes/android_flutter/android/NsdDiscoveryBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/NsdDiscoveryBridge.kt
           cp spikes/android_flutter/android/KeystoreSecretBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/KeystoreSecretBridge.kt
+          cp spikes/android_flutter/android/AndroidMediaBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaBridge.kt
       - name: Analyze spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter analyze
