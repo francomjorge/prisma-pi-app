@@ -32,6 +32,7 @@ void main() {
       expect(session.snapshot.phase, SessionPhase.ready);
       expect(session.snapshot.device?.deviceId, MockPrismaConnector.mockDeviceId);
       expect(session.snapshot.capabilities?.supports('control.events'), isTrue);
+      expect(session.snapshot.capabilities?.supports('control.command_idempotency'), isTrue);
       expect(session.snapshot.state?.generation, 1);
       expect(session.snapshot.mediaEndpoints, hasLength(2));
 
@@ -62,6 +63,67 @@ void main() {
       final next = await synchronized;
       expect(next.state?.intensity, 81);
       expect(next.state?.generation, 2);
+
+      await session.dispose();
+    });
+
+    test('same command_id and envelope is idempotent across retransmission', () async {
+      final connector = MockPrismaConnector();
+      final session = PrismaSessionManager(connector);
+      await session.open(await connector.discover().first);
+
+      const command = PrismaCommand(
+        commandId: 'cmd-retry-1',
+        type: 'SET_INTENSITY',
+        payload: {'intensity': 72},
+        origin: 'TEST',
+        expectedGeneration: 1,
+        timestampMs: 100,
+      );
+
+      final first = await session.issue(command);
+      await Future<void>.delayed(Duration.zero);
+      final generationAfterFirst = (await connector.getState()).generation;
+      final second = await session.issue(command);
+      final generationAfterSecond = (await connector.getState()).generation;
+
+      expect(first['ok'], isTrue);
+      expect(second['ok'], isTrue);
+      expect(second['generation'], first['generation']);
+      expect(generationAfterFirst, 2);
+      expect(generationAfterSecond, 2);
+
+      await session.dispose();
+    });
+
+    test('reusing command_id with different command fails closed', () async {
+      final connector = MockPrismaConnector();
+      final session = PrismaSessionManager(connector);
+      await session.open(await connector.discover().first);
+
+      final first = await session.issue(const PrismaCommand(
+        commandId: 'cmd-reused',
+        type: 'SET_INTENSITY',
+        payload: {'intensity': 40},
+        origin: 'TEST',
+        expectedGeneration: 1,
+        timestampMs: 1,
+      ));
+      expect(first['ok'], isTrue);
+
+      final second = await session.issue(const PrismaCommand(
+        commandId: 'cmd-reused',
+        type: 'SET_INTENSITY',
+        payload: {'intensity': 90},
+        origin: 'TEST',
+        expectedGeneration: 2,
+        timestampMs: 2,
+      ));
+
+      expect(second['ok'], isFalse);
+      expect((second['error'] as Map)['code'], 'COMMAND_ID_REUSE');
+      expect((await connector.getState()).intensity, 40);
+      expect((await connector.getState()).generation, 2);
 
       await session.dispose();
     });
