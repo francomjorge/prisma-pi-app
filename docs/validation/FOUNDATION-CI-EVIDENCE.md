@@ -139,3 +139,53 @@ A previous run exposed a Dart language-compatibility defect in a new media test 
 This gate does **not** prove that a physical Android device successfully decodes video into the OES texture, that the path is zero-copy on a particular codec/device, or that memory/thermal behavior is production-safe. Those remain physical-device acceptance gates.
 
 The GPU shader in this baseline is intentionally pass-through. Real PRISMA FX processing is not claimed by this evidence.
+
+---
+
+## 2026-10-12 — Neutral processing runtime + Android diagnostic FX adapter
+
+Validated head commit:
+
+```text
+7545dee1564bf2613a7136d94fc30c4176f94a18
+```
+
+GitHub Actions workflow run:
+
+```text
+foundation-validation #234
+run_id: 38274554710
+```
+
+All eight jobs completed successfully:
+
+```text
+domain                        SUCCESS
+security-contracts            SUCCESS
+storage-runtime               SUCCESS
+media-runtime-contract        SUCCESS
+processing-runtime            SUCCESS
+connector-session             SUCCESS
+network-protocol-integration  SUCCESS
+android-stack-spike           SUCCESS
+```
+
+This gate additionally validates in CI:
+
+- the new pure-Dart `prisma_processing_runtime` package;
+- `ProcessingGraph` → local `ProcessingPlan` compilation for MOBILE/BOTH execution targets;
+- deterministic active-node ordering;
+- strict rejection of unsupported node types by default;
+- required-backend-capability enforcement;
+- explicit compatibility bypass diagnostics when that policy is deliberately selected;
+- active-node limit enforcement;
+- schema-versioned platform serialization containing control data only;
+- opaque input/output transport validation;
+- Flutter diagnostic compilation of the domain graph into `ProcessingPlan` schema v1;
+- Android native parsing of that plan without receiving raw image/video frame payloads through Dart;
+- diagnostic `POSTER` and `GRAYSCALE` mapping in the SurfaceTexture/OES GLSL adapter;
+- full disposable Android debug APK build with the neutral processing-plan boundary wired into the native GPU path.
+
+This proves the **software boundary and build integration**, not physical GPU execution. It does not yet prove decoded frames traverse the POSTER shader correctly on a phone, that the path is zero-copy on a particular device, or that a multi-node chain can run without CPU readback.
+
+The Android diagnostic adapter is intentionally capped at one active processing node. The next GPU implementation gate is ordered multi-pass execution with native ping-pong render targets while keeping framebuffer/texture identifiers out of the domain/runtime contract.
