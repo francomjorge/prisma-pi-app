@@ -28,11 +28,12 @@ import javax.microedition.khronos.opengles.GL10
  * M0 GPU-path spike:
  *
  * Media3 decoder -> Surface -> SurfaceTexture -> GL_TEXTURE_EXTERNAL_OES ->
- * GLSL effect stage -> native render target.
+ * neutral PRISMA processing plan -> GLSL effect stage -> native render target.
  *
- * Raw video frames never cross the Flutter method channel. The shader currently
- * exposes only diagnostic PASS_THROUGH / GRAYSCALE / POSTERIZE modes. It is a
- * proof of the processing seam, not the production FX engine.
+ * Raw video frames never cross the Flutter method channel. The native adapter
+ * consumes a schema-versioned processing plan that was compiled from the
+ * platform-neutral PRISMA ProcessingGraph. The current spike intentionally
+ * supports only one diagnostic node (POSTER or GRAYSCALE).
  */
 @UnstableApi
 class AndroidGpuVideoSurfaceFactory :
@@ -55,11 +56,7 @@ private class AndroidGpuVideoPlatformView(
     private val autoplay = params["autoplay"] as? Boolean ?: true
     private val loop = params["loop"] as? Boolean ?: true
     private val muted = params["muted"] as? Boolean ?: true
-    private val effect = ((params["effect"] as? String) ?: "passthrough").lowercase()
-    private val effectAmount = ((params["effect_amount"] as? Number)?.toFloat() ?: 1f)
-        .coerceIn(0f, 1f)
-    private val posterizeLevels = ((params["posterize_levels"] as? Number)?.toFloat() ?: 6f)
-        .coerceIn(2f, 32f)
+    private val processing = DiagnosticProcessingConfig.fromParams(params)
 
     private var player: ExoPlayer? = null
     private var tracked = false
@@ -68,9 +65,9 @@ private class AndroidGpuVideoPlatformView(
     private val gpuView = PrismaGpuVideoView(
         context = context,
         fit = fit,
-        effect = effect,
-        effectAmount = effectAmount,
-        posterizeLevels = posterizeLevels,
+        effect = processing.effect,
+        effectAmount = processing.effectAmount,
+        posterizeLevels = processing.posterizeLevels,
         onSurfaceReady = surfaceReady@{ surface, renderer ->
             if (disposed || player != null) return@surfaceReady
             require(File(path).isFile) { "GPU video path does not exist: $path" }
@@ -114,6 +111,72 @@ private class AndroidGpuVideoPlatformView(
         }
 
         gpuView.releaseGpuResources()
+    }
+}
+
+private data class DiagnosticProcessingConfig(
+    val effect: String,
+    val effectAmount: Float,
+    val posterizeLevels: Float,
+) {
+    companion object {
+        fun fromParams(params: Map<*, *>): DiagnosticProcessingConfig {
+            val plan = params["processing_plan"] as? Map<*, *>
+                ?: return DiagnosticProcessingConfig(
+                    effect = "passthrough",
+                    effectAmount = 0f,
+                    posterizeLevels = 6f,
+                )
+
+            val schemaVersion = (plan["schema_version"] as? Number)?.toInt()
+                ?: error("processing plan requires schema_version")
+            require(schemaVersion == 1) {
+                "unsupported processing plan schema_version: $schemaVersion"
+            }
+
+            val nodes = plan["nodes"] as? List<*>
+                ?: error("processing plan requires nodes")
+            require(nodes.size <= 1) {
+                "M0 Android GPU adapter supports at most one active node"
+            }
+            if (nodes.isEmpty()) {
+                return DiagnosticProcessingConfig(
+                    effect = "passthrough",
+                    effectAmount = 0f,
+                    posterizeLevels = 6f,
+                )
+            }
+
+            val node = nodes.single() as? Map<*, *>
+                ?: error("processing node must be an object")
+            val nodeId = node["node_id"] as? String
+                ?: error("processing node requires node_id")
+            val type = (node["type"] as? String)?.uppercase()
+                ?: error("processing node $nodeId requires type")
+            val parameters = (node["parameters"] as? Map<*, *>)
+                ?: emptyMap<String, Any?>()
+
+            val amount = ((parameters["amount"] as? Number)?.toFloat() ?: 1f)
+                .coerceIn(0f, 1f)
+            val levels = ((parameters["levels"] as? Number)?.toFloat() ?: 6f)
+                .coerceIn(2f, 32f)
+
+            return when (type) {
+                "POSTER" -> DiagnosticProcessingConfig(
+                    effect = "posterize",
+                    effectAmount = amount,
+                    posterizeLevels = levels,
+                )
+                "GRAYSCALE" -> DiagnosticProcessingConfig(
+                    effect = "grayscale",
+                    effectAmount = amount,
+                    posterizeLevels = levels,
+                )
+                else -> error(
+                    "unsupported processing node $type ($nodeId) for M0 Android GPU adapter"
+                )
+            }
+        }
     }
 }
 
