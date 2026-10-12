@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Prove the first no-Dart-frame-copy path from a local video decoder into a GPU-sampleable texture before the PRISMA processing graph starts implementing real FX.
+Prove the first no-Dart-frame-copy path from a local video decoder into a GPU-sampleable texture and through a real shader effect before the PRISMA processing graph starts implementing production FX.
 
 The spike deliberately does not claim that OpenGL ES is the final production GPU backend. It proves the architectural handoff that any final backend must preserve.
 
@@ -22,7 +22,7 @@ android.graphics.SurfaceTexture
         ↓
 GL_TEXTURE_EXTERNAL_OES
         ↓
-GLSL pass-through shader
+GLSL diagnostic effect stage
         ↓
 native render target
 ```
@@ -59,10 +59,45 @@ The renderer:
 6. schedules rendering without calling `updateTexImage()` from the callback thread;
 7. calls `updateTexImage()` only on the GL render thread;
 8. refreshes the SurfaceTexture transform matrix for the current frame;
-9. samples the external texture in a pass-through fragment shader;
-10. applies PRISMA contain/cover/fill-style geometry without changing decoder resolution.
+9. samples the external texture in a fragment shader;
+10. applies a diagnostic `PASS_THROUGH`, `GRAYSCALE` or `POSTERIZE` processing mode entirely on the GPU path;
+11. blends effect amount in the shader without CPU frame readback;
+12. applies PRISMA contain/cover/fill-style geometry without changing decoder resolution.
 
-The fragment shader is intentionally simple. It is a replaceable insertion point for later PRISMA shader/effect work, not a final FX engine.
+The Flutter M0 harness currently requests a `POSTERIZE` diagnostic stage at 85% amount and six levels for video sources. This is deliberately fixed diagnostic configuration, not product FX UI.
+
+The shader remains intentionally simple. It proves that the OES decoder texture can feed a PRISMA-controlled fragment-processing stage before presentation. It is not the final FX engine.
+
+## First processing proof
+
+The current diagnostic shader supports:
+
+```text
+PASS_THROUGH
+GRAYSCALE
+POSTERIZE
+```
+
+Parameters are supplied once at platform-view creation:
+
+```text
+effect
+ effect_amount       0..1
+ posterize_levels    2..32
+```
+
+No browser-canvas code is reused. No decoded video pixels are sent to Dart.
+
+The architectural proof is now:
+
+```text
+Media3 decode
+  → OES texture
+  → PRISMA shader stage
+  → native render target
+```
+
+Physical hardware must still prove that actual decoded frames travel this path correctly.
 
 ## Aspect-ratio separation
 
@@ -76,6 +111,8 @@ source aspect
 Media3 decode
     ↓
 external OES texture
+    ↓
+PRISMA shader stage
     ↓
 PRISMA fit geometry
     ↓
@@ -114,11 +151,11 @@ CI may prove:
 - Kotlin/Android API compatibility;
 - Media3 dependency resolution;
 - Flutter platform-view registration;
-- GLSurfaceView / SurfaceTexture / OES shader compilation;
+- GLSurfaceView / SurfaceTexture / OES shader source compilation into the Android application;
 - Dart media-resource contracts and tests;
 - debug APK build.
 
-CI cannot prove actual decoded frames reach the GPU on a phone.
+CI cannot prove actual decoded frames reach the GPU on a phone or that a device GPU successfully compiles/runs every shader at runtime.
 
 ## Physical-device acceptance gate
 
@@ -129,26 +166,27 @@ Before this path can become `HARDWARE_TESTED`, validate on Android hardware:
 3. `updateTexImage()` remains on the GL thread and raises no context errors;
 4. orientation/SurfaceTexture transform matrix is correct;
 5. contain/cover/fill behavior is visually correct for portrait, landscape and square video;
-6. repeated open/release cycles return decoder/surface counts to baseline;
-7. 30+ minute loop does not show monotonic Java/native/GPU memory growth;
-8. pause/background/foreground does not leak the player or SurfaceTexture;
-9. source switching does not leave stale GL textures;
-10. unsupported/corrupt video fails without poisoning the next session;
-11. thermal behavior and dropped frames are recorded;
-12. the OES texture can feed at least one real shader effect without a CPU readback.
+6. posterize visibly changes the decoded video without CPU readback;
+7. effect amount behaves correctly at 0%, intermediate values and 100%;
+8. repeated open/release cycles return decoder/surface counts to baseline;
+9. 30+ minute loop does not show monotonic Java/native/GPU memory growth;
+10. pause/background/foreground does not leak the player or SurfaceTexture;
+11. source switching does not leave stale GL textures;
+12. unsupported/corrupt video fails without poisoning the next session;
+13. thermal behavior and dropped frames are recorded.
 
 ## Next processing step
 
-Once physical validation succeeds, add one deliberately trivial GPU effect in the shader path, for example grayscale or posterization, solely to prove:
+After compile validation and physical proof of this shader path, define the reusable PRISMA-owned GPU processing-node adapter used by PIXEL, GLITCH, POSTER, HUE, MIRROR, masks and compositing.
 
-```text
-Media3 decode
-  → OES texture
-  → PRISMA shader stage
-  → native render target
-```
+That adapter must preserve these rules:
 
-After that, define the reusable GPU processing-node adapter used by PIXEL, GLITCH, POSTER, HUE, MIRROR, masks and compositing.
+- Core/application code does not import OpenGL ES, Vulkan, Media3 or Android `Surface` classes;
+- ordered processing remains owned by the PRISMA processing graph;
+- native GPU implementation is replaceable;
+- parameters update without rebuilding the whole media session where the backend allows it;
+- frame processing never requires round-tripping raw pixels through Dart;
+- every native stage has deterministic lifetime and release behavior.
 
 Do not port browser-canvas FX code directly.
 
