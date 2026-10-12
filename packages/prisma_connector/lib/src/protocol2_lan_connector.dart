@@ -24,6 +24,24 @@ class Protocol2HttpException implements Exception {
       'Protocol2HttpException($statusCode, $code, retryable=$retryable): $message';
 }
 
+class Protocol2TransportException implements Exception {
+  Protocol2TransportException({
+    required this.operation,
+    required this.message,
+    required this.retryable,
+    this.cause,
+  });
+
+  final String operation;
+  final String message;
+  final bool retryable;
+  final Object? cause;
+
+  @override
+  String toString() =>
+      'Protocol2TransportException($operation, retryable=$retryable): $message';
+}
+
 /// Reference LAN/Wi-Fi implementation of the PRISMA Protocol 2.0 connector.
 ///
 /// Discovery is intentionally injected as [seedRecords] in this package. Real
@@ -34,6 +52,8 @@ class Protocol2LanConnector implements PrismaConnector {
     Iterable<DiscoveryRecord> seedRecords = const [],
     HttpClient? httpClient,
     this.bootstrapCredential,
+    this.requestTimeout = const Duration(seconds: 5),
+    this.eventConnectTimeout = const Duration(seconds: 5),
   })  : _seedRecords = List.unmodifiable(seedRecords),
         _http = httpClient ?? HttpClient();
 
@@ -46,6 +66,8 @@ class Protocol2LanConnector implements PrismaConnector {
   /// Optional local appliance bootstrap credential. This is not a Google or
   /// cloud-account token. Cloud identity and appliance trust remain separate.
   final String? bootstrapCredential;
+  final Duration requestTimeout;
+  final Duration eventConnectTimeout;
 
   final StreamController<PrismaEvent> _events =
       StreamController<PrismaEvent>.broadcast(sync: true);
@@ -224,12 +246,22 @@ class Protocol2LanConnector implements PrismaConnector {
       query: null,
     );
 
-    final socket = await WebSocket.connect(
-      eventUri.toString(),
-      headers: {
-        HttpHeaders.authorizationHeader: 'Bearer $_sessionToken',
-      },
-    );
+    WebSocket socket;
+    try {
+      socket = await WebSocket.connect(
+        eventUri.toString(),
+        headers: {
+          HttpHeaders.authorizationHeader: 'Bearer $_sessionToken',
+        },
+      ).timeout(eventConnectTimeout);
+    } on TimeoutException catch (error) {
+      throw Protocol2TransportException(
+        operation: 'CONNECT /v2/events',
+        message: 'Event WebSocket connection timed out after $eventConnectTimeout',
+        retryable: true,
+        cause: error,
+      );
+    }
     _eventSocket = socket;
 
     socket.listen(
@@ -281,43 +313,63 @@ class Protocol2LanConnector implements PrismaConnector {
     }
     if (authenticated) _requireAuthenticated();
 
-    final uri = _baseUri!.replace(path: path, query: null);
-    final request = await _http.openUrl(method, uri);
-    request.headers.contentType = ContentType.json;
-    request.headers.accept.add(ContentType.json);
-    if (authenticated) {
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer $_sessionToken',
+    try {
+      final uri = _baseUri!.replace(path: path, query: null);
+      final request = await _http.openUrl(method, uri).timeout(requestTimeout);
+      request.headers.contentType = ContentType.json;
+      request.headers.accept.add(ContentType.json);
+      if (authenticated) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $_sessionToken',
+        );
+      }
+      if (body != null) request.write(jsonEncode(body));
+
+      final response = await request.close().timeout(requestTimeout);
+      final text = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(requestTimeout);
+      final dynamic decoded =
+          text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
+      if (decoded is! Map) {
+        throw FormatException('Protocol 2.0 response from $path is not an object');
+      }
+      final envelope = Map<String, dynamic>.from(decoded);
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          envelope['ok'] == false) {
+        final error = envelope['error'];
+        final errorMap = error is Map
+            ? Map<String, dynamic>.from(error)
+            : const <String, dynamic>{};
+        throw Protocol2HttpException(
+          statusCode: response.statusCode,
+          code: errorMap['code'] as String? ?? 'HTTP_ERROR',
+          message: errorMap['message'] as String? ??
+              'Protocol 2.0 request failed: $path',
+          retryable: errorMap['retryable'] as bool? ?? false,
+        );
+      }
+
+      return envelope;
+    } on TimeoutException catch (error) {
+      throw Protocol2TransportException(
+        operation: '$method $path',
+        message: 'Protocol 2.0 request timed out after $requestTimeout',
+        retryable: true,
+        cause: error,
+      );
+    } on SocketException catch (error) {
+      throw Protocol2TransportException(
+        operation: '$method $path',
+        message: 'Protocol 2.0 socket failure: ${error.message}',
+        retryable: true,
+        cause: error,
       );
     }
-    if (body != null) request.write(jsonEncode(body));
-
-    final response = await request.close();
-    final text = await utf8.decoder.bind(response).join();
-    final dynamic decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
-    if (decoded is! Map) {
-      throw FormatException('Protocol 2.0 response from $path is not an object');
-    }
-    final envelope = Map<String, dynamic>.from(decoded);
-
-    if (response.statusCode < 200 ||
-        response.statusCode >= 300 ||
-        envelope['ok'] == false) {
-      final error = envelope['error'];
-      final errorMap = error is Map
-          ? Map<String, dynamic>.from(error)
-          : const <String, dynamic>{};
-      throw Protocol2HttpException(
-        statusCode: response.statusCode,
-        code: errorMap['code'] as String? ?? 'HTTP_ERROR',
-        message: errorMap['message'] as String? ??
-            'Protocol 2.0 request failed: $path',
-        retryable: errorMap['retryable'] as bool? ?? false,
-      );
-    }
-
-    return envelope;
   }
 
   Map<String, dynamic> _resultMap(Map<String, dynamic> envelope) {
