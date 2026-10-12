@@ -16,6 +16,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `testing/MOCK-APPLIANCE.md` — deterministic in-memory + network Mock Appliance strategy, implemented fault injection and integration-test matrix.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
 - `storage/STORAGE-RUNTIME-IMPLEMENTATION.md` — implemented managed layout, transactional imports, SHA-256 integrity, rollback and startup recovery behavior.
+- `media/MEDIA-RUNTIME-FOUNDATION.md` — SAF/platform materialization, managed-media handoff, native probe/decode boundary and platform-neutral local-media lifecycle.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
 - `accounts/BACKEND-DATA-MODEL.md` — logical account/identity/session/entitlement/purchase persistence model, uniqueness rules and offline snapshot boundary.
@@ -91,14 +92,26 @@ Managed local-library runtime for:
 - durable app-data layout;
 - relative managed media locations;
 - traversal-safe path resolution;
-- streamed staging imports;
+- streamed and platform-materialized staging imports;
 - SHA-256 integrity metadata;
 - injected media probing;
 - image/video validation;
 - atomic file promotion + metadata rollback;
 - interrupted-staging cleanup;
 - orphan/missing durable-media recovery reports;
-- metadata repository boundary for later SQLite implementation.
+- durable SQLite media metadata repository with versioned schema migration.
+
+### `packages/prisma_media_runtime`
+
+Platform-neutral local-media contracts for:
+
+- validated local media source handoff;
+- ephemeral runtime locators that never enter portable projects;
+- runtime capabilities;
+- open/autoplay/loop/mute options;
+- session lifecycle and snapshots;
+- play/pause/seek/loop/mute/close ports;
+- deterministic lifecycle transition validation.
 
 ### `packages/prisma_mock_appliance`
 
@@ -121,15 +134,20 @@ The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for
 - physical keyboard events;
 - Android `NsdManager` / DNS-SD discovery through an EventChannel;
 - `_prisma-pi._tcp` service discovery diagnostics;
-- AndroidKeyStore AES-GCM secure-secret round-trip diagnostics, with ciphertext in private app storage and the key kept non-exportable in AndroidKeyStore.
+- AndroidKeyStore AES-GCM secure-secret round-trip diagnostics, with ciphertext in private app storage and the key kept non-exportable in AndroidKeyStore;
+- Android `ACTION_OPEN_DOCUMENT` image/video selection;
+- `ContentResolver` metadata inspection and direct materialization into importer-owned staging;
+- native image/video metadata probing;
+- native still-image decode probe;
+- native video-frame decode probe without moving raw frames through Dart.
 
-This is still diagnostic infrastructure, not product UI. Real-device validation is still required.
+This is still diagnostic infrastructure, not product UI. Continuous looping-video playback/render-surface validation and real-device validation are still required.
 
 ## CI policy
 
 Foundation CI runs on the open pull request and supports manual dispatch. Workflow concurrency cancels obsolete in-progress runs when a newer foundation commit supersedes them, preventing stale validation queues from hiding the state of the current branch.
 
-Current gate covers domain, security contracts, managed storage runtime, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests.
+Current gate covers domain, security contracts, managed storage runtime, media-runtime contracts, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests.
 
 ## Related sources of truth
 
