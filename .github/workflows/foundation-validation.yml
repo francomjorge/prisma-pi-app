@@ -66,7 +66,7 @@ jobs:
       - name: Analyze
         working-directory: packages/prisma_media_runtime
         run: dart analyze --fatal-infos
-      - name: Test local media runtime contracts
+      - name: Test local media runtime contracts and resource ownership
         working-directory: packages/prisma_media_runtime
         run: dart test
 
@@ -130,6 +130,15 @@ jobs:
               1,
           )
           pubspec.write_text(text)
+
+          gradle = Path('/tmp/prisma_mobile_spike/android/app/build.gradle.kts')
+          gradle.write_text(
+              gradle.read_text()
+              + '\n\ndependencies {\n'
+                '    implementation("androidx.media3:media3-exoplayer:1.11.1")\n'
+                '    implementation("androidx.media3:media3-ui:1.11.1")\n'
+                '}\n'
+          )
           PY
           (cd /tmp/prisma_mobile_spike && flutter pub get)
           rm -f /tmp/prisma_mobile_spike/test/widget_test.dart
@@ -139,12 +148,14 @@ jobs:
           cp spikes/android_flutter/android/NsdDiscoveryBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/NsdDiscoveryBridge.kt
           cp spikes/android_flutter/android/KeystoreSecretBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/KeystoreSecretBridge.kt
           cp spikes/android_flutter/android/AndroidMediaBridge.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaBridge.kt
+          cp spikes/android_flutter/android/AndroidMediaResourceTracker.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaResourceTracker.kt
+          cp spikes/android_flutter/android/AndroidMediaSurfaceFactory.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/AndroidMediaSurfaceFactory.kt
       - name: Analyze spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter analyze
       - name: Test spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter test
-      - name: Build debug APK
+      - name: Build debug APK with native Media3 surface
         working-directory: /tmp/prisma_mobile_spike
         run: flutter build apk --debug
