@@ -10,6 +10,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 
 - `architecture/MOBILE-FOUNDATION-2.0.md` — mobile runtime topology, execution modes, connectors, processing graph and infrastructure gates.
 - `protocol/PROTOCOL-2.0.md` — mobile ↔ appliance discovery, control, events, capabilities, media negotiation and compatibility.
+- `protocol/NETWORK-MOCK-APPLIANCE.md` — real HTTP + WebSocket Protocol 2.0 reference path, network Mock Appliance, session sequence and integration-test scope.
 - `connectivity/CONNECTOR-SESSION-RUNTIME.md` — transport-neutral connector API, appliance-session state machine, generation synchronization, reconnect and legacy-adapter boundaries.
 - `testing/MOCK-APPLIANCE.md` — deterministic Mock Appliance strategy, current in-memory implementation, fault-injection plan and integration-test matrix.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
@@ -54,7 +55,19 @@ Initial remote-runtime infrastructure for:
 - remote appliance session lifecycle;
 - full-state synchronization and generation-gap recovery;
 - deterministic in-memory Mock Appliance;
+- Protocol 2.0 LAN/Wi-Fi HTTP + WebSocket connector;
 - integration tests for commands/conflicts/resynchronization.
+
+### `packages/prisma_mock_appliance`
+
+Development/test appliance process for:
+
+- Protocol 2.0 HTTP endpoints;
+- authenticated appliance session bootstrap;
+- WebSocket event channel;
+- network command/state/capability/media tests;
+- generation-gap fault injection;
+- future disconnect/latency/schema fault injection.
 
 These are infrastructure contracts and runtime components, not final UI code.
 
