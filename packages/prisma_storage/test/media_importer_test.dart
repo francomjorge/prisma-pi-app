@@ -113,6 +113,74 @@ void main() {
     expect(asset.frameRate, 29.97);
   });
 
+  test('platform materializer writes directly into importer-owned staging', () async {
+    final repository = InMemoryMediaMetadataRepository();
+    final platformFile = await _sourceFile(temp, 'picked.png', [8, 6, 7, 5, 3, 0, 9]);
+    String? stagingPathSeenByAdapter;
+
+    final importer = MediaImporter(
+      layout: layout,
+      repository: repository,
+      probe: _FixedProbe(const MediaProbeResult(
+        type: MediaAssetType.image,
+        mimeType: 'image/png',
+        width: 320,
+        height: 240,
+      )),
+      assetIdFactory: () => 'content-uri-asset',
+    );
+
+    final asset = await importer.import(CallbackAssetImportSource(
+      displayName: 'picked.png',
+      originalReference: 'content://documents/picked',
+      materializer: (targetPath) async {
+        stagingPathSeenByAdapter = targetPath;
+        await platformFile.copy(targetPath);
+      },
+    ));
+
+    expect(stagingPathSeenByAdapter, endsWith('content-uri-asset.part'));
+    expect(asset.assetId, 'content-uri-asset');
+    expect(asset.originalReference, 'content://documents/picked');
+    expect(asset.byteSize, 7);
+    expect(await repository.getAsset(asset.assetId), isNotNull);
+    expect(await Directory(layout.importStagingDir).list().toList(), isEmpty);
+  });
+
+  test('platform materializer that produces no file fails closed', () async {
+    final repository = InMemoryMediaMetadataRepository();
+    final importer = MediaImporter(
+      layout: layout,
+      repository: repository,
+      probe: _FixedProbe(const MediaProbeResult(
+        type: MediaAssetType.image,
+        mimeType: 'image/png',
+        width: 1,
+        height: 1,
+      )),
+      assetIdFactory: () => 'missing-platform-bytes',
+    );
+
+    await expectLater(
+      importer.import(CallbackAssetImportSource(
+        displayName: 'missing.png',
+        originalReference: 'content://documents/missing',
+        materializer: (_) async {},
+      )),
+      throwsA(
+        isA<MediaImportException>().having(
+          (e) => e.code,
+          'code',
+          'SOURCE_MATERIALIZATION_FAILED',
+        ),
+      ),
+    );
+
+    expect(await repository.listAssets(), isEmpty);
+    expect(await Directory(layout.importStagingDir).list().toList(), isEmpty);
+    expect(await Directory(layout.mediaDir).list().toList(), isEmpty);
+  });
+
   test('invalid media never becomes a library asset', () async {
     final repository = InMemoryMediaMetadataRepository();
     final source = await _sourceFile(temp, 'broken.jpg', [1, 2, 3]);
