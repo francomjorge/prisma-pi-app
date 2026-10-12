@@ -1,0 +1,49 @@
+name: foundation-validation
+
+on:
+  push:
+    branches: [infra-foundation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_domain
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_domain
+        run: dart analyze --fatal-infos
+      - name: Test
+        working-directory: packages/prisma_domain
+        run: dart test
+
+  android-stack-spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate disposable Android Flutter host
+        run: |
+          rm -rf /tmp/prisma_mobile_spike
+          flutter create --platforms=android --org com.prismapi --project-name prisma_mobile_spike /tmp/prisma_mobile_spike
+          cp spikes/android_flutter/lib/main.dart /tmp/prisma_mobile_spike/lib/main.dart
+          cp spikes/android_flutter/test/smoke_test.dart /tmp/prisma_mobile_spike/test/smoke_test.dart
+          mkdir -p /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike
+          cp spikes/android_flutter/android/MainActivity.kt /tmp/prisma_mobile_spike/android/app/src/main/kotlin/com/prismapi/prisma_mobile_spike/MainActivity.kt
+      - name: Analyze spike
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter analyze
+      - name: Test spike
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter test
+      - name: Build debug APK
+        working-directory: /tmp/prisma_mobile_spike
+        run: flutter build apk --debug
