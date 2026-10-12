@@ -1,7 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../lib/main.dart';
+import 'package:prisma_mobile_spike/main.dart';
 
 void main() {
   testWidgets('M0 diagnostic harness boots', (tester) async {
