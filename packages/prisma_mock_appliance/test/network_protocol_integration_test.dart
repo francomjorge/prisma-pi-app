@@ -170,5 +170,23 @@ void main() {
       expect(session.snapshot.phase, SessionPhase.ready);
       expect(session.snapshot.state?.generation, 1);
     });
+
+    test('request timeout is a retryable transport failure', () async {
+      server.setResponseLatency(const Duration(milliseconds: 80));
+      final shortTimeoutConnector = Protocol2LanConnector(
+        seedRecords: [server.discoveryRecord],
+        requestTimeout: const Duration(milliseconds: 20),
+      );
+
+      await expectLater(
+        shortTimeoutConnector.connect(server.discoveryRecord),
+        throwsA(
+          isA<Protocol2TransportException>()
+              .having((e) => e.retryable, 'retryable', isTrue)
+              .having((e) => e.operation, 'operation', 'GET /v2/device'),
+        ),
+      );
+      await shortTimeoutConnector.disconnect();
+    });
   });
 }
