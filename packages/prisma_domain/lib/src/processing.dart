@@ -35,26 +35,39 @@ class ProcessingNode {
 }
 
 class ProcessingGraph {
-  ProcessingGraph(Iterable<ProcessingNode> nodes) : nodes = List.unmodifiable(_normalize(nodes));
+  ProcessingGraph(Iterable<ProcessingNode> nodes)
+      : nodes = List.unmodifiable(_normalize(nodes));
+
   final List<ProcessingNode> nodes;
 
   static List<ProcessingNode> _normalize(Iterable<ProcessingNode> input) {
     final list = input.toList();
     final ids = <String>{};
     for (final node in list) {
-      if (!ids.add(node.nodeId)) throw ArgumentError('duplicate node_id: ${node.nodeId}');
+      if (!ids.add(node.nodeId)) {
+        throw ArgumentError('duplicate node_id: ${node.nodeId}');
+      }
     }
     list.sort((a, b) => a.order.compareTo(b.order));
-    return [for (var i = 0; i < list.length; i++) list[i].copyWith(order: i)];
+    return [
+      for (var i = 0; i < list.length; i++) list[i].copyWith(order: i),
+    ];
   }
 
   ProcessingGraph reorder(String nodeId, int newIndex) {
-    if (newIndex < 0 || newIndex >= nodes.length) throw RangeError.index(newIndex, nodes);
+    if (newIndex < 0 || newIndex >= nodes.length) {
+      throw RangeError.index(newIndex, nodes);
+    }
     final mutable = nodes.toList();
     final oldIndex = mutable.indexWhere((n) => n.nodeId == nodeId);
     if (oldIndex < 0) throw ArgumentError.value(nodeId, 'nodeId');
     final node = mutable.removeAt(oldIndex);
     mutable.insert(newIndex, node);
-    return ProcessingGraph(mutable);
+
+    // Reassign order before constructing the new graph so normalization keeps
+    // the explicitly requested sequence instead of restoring the old order.
+    return ProcessingGraph([
+      for (var i = 0; i < mutable.length; i++) mutable[i].copyWith(order: i),
+    ]);
   }
 }
