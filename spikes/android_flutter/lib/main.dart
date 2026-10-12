@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'android_media_import_diagnostic.dart';
+import 'processing_adapter_diagnostic.dart';
 
 void main() => runApp(const PrismaAndroidStackSpike());
 
@@ -21,6 +22,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
 
   final FocusNode keyboardFocusNode = FocusNode(debugLabel: 'm0-hardware-keyboard');
   late final AndroidMediaImportDiagnostic mediaImportDiagnostic;
+  late final Map<String, Object?> diagnosticProcessingPlan;
 
   String nativeBoundary = 'not probed';
   String secureStoreState = 'not probed';
@@ -38,6 +40,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
   void initState() {
     super.initState();
     mediaImportDiagnostic = AndroidMediaImportDiagnostic(mediaChannel);
+    diagnosticProcessingPlan = buildDiagnosticProcessingPlan();
   }
 
   Future<void> probeNativeBoundary() async {
@@ -203,7 +206,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 Text('Native resources: $resourceState'),
                 if (activeMedia != null)
                   Text(
-                    'Render path: ${isVideo ? 'Media3 → SurfaceTexture → OES/GLSL → POSTERIZE' : 'target-sized native image'}',
+                    'Render path: ${isVideo ? 'domain graph → neutral processing plan → Media3/OES/GLSL' : 'target-sized native image'}',
                   ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -265,9 +268,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                         'autoplay': true,
                         'loop': true,
                         'muted': true,
-                        'effect': isVideo ? 'posterize' : 'passthrough',
-                        'effect_amount': 0.85,
-                        'posterize_levels': 6,
+                        if (isVideo) 'processing_plan': diagnosticProcessingPlan,
                       },
                     ),
                   ),
