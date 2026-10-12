@@ -22,6 +22,21 @@ jobs:
         working-directory: packages/prisma_domain
         run: dart test
 
+  connector-session:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_connector
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_connector
+        run: dart analyze --fatal-infos
+      - name: Test Mock Appliance and session synchronization
+        working-directory: packages/prisma_connector
+        run: dart test
+
   android-stack-spike:
     runs-on: ubuntu-latest
     steps:
