@@ -173,6 +173,8 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
 
   @override
   Widget build(BuildContext context) {
+    final isVideo = activeMedia?.asset.type.name == 'video';
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: KeyboardListener(
@@ -199,6 +201,10 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 Text('NSD: $discoveryState'),
                 Text('SAF managed import: $mediaImportState'),
                 Text('Native resources: $resourceState'),
+                if (activeMedia != null)
+                  Text(
+                    'Render path: ${isVideo ? 'Media3 → SurfaceTexture → OES/GLSL' : 'target-sized native image'}',
+                  ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: probeNativeBoundary,
@@ -246,7 +252,9 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                       key: ValueKey(
                         '${activeMedia!.managedPath}-$nativeSurfaceGeneration',
                       ),
-                      viewType: 'prisma.pi/native_media_surface',
+                      viewType: isVideo
+                          ? 'prisma.pi/gpu_video_surface'
+                          : 'prisma.pi/native_media_surface',
                       creationParamsCodec: const StandardMessageCodec(),
                       creationParams: {
                         'path': activeMedia!.managedPath,
