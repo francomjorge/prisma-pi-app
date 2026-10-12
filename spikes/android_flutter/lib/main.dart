@@ -14,9 +14,11 @@ class PrismaAndroidStackSpike extends StatefulWidget {
 
 class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
   static const mediaChannel = MethodChannel('prisma.pi/media');
+  static const securityChannel = MethodChannel('prisma.pi/security');
   static const discoveryChannel = EventChannel('prisma.pi/discovery');
 
   String nativeBoundary = 'not probed';
+  String secureStoreState = 'not probed';
   String lastKey = 'none';
   String discoveryState = 'not started';
   StreamSubscription<dynamic>? discoverySubscription;
@@ -27,6 +29,22 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
       setState(() => nativeBoundary = '${result?['platform']}/${result?['boundary']}');
     } on PlatformException catch (e) {
       setState(() => nativeBoundary = 'platform error: ${e.code}');
+    }
+  }
+
+  Future<void> probeSecureStore() async {
+    try {
+      final result =
+          await securityChannel.invokeMapMethod<String, dynamic>('secureStoreProbe');
+      final supported = result?['supported'] == true;
+      final roundTrip = result?['round_trip'] == true;
+      setState(() {
+        secureStoreState = supported
+            ? 'AndroidKeyStore AES/GCM round-trip=${roundTrip ? 'ok' : 'failed'}'
+            : 'unsupported: ${result?['reason'] ?? 'unknown'}';
+      });
+    } on PlatformException catch (e) {
+      setState(() => secureStoreState = 'keystore error: ${e.code}');
     }
   }
 
@@ -79,10 +97,12 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                   const Text('PRISMA-PI / M0 ANDROID STACK SPIKE', textScaler: TextScaler.linear(1.2)),
                   const SizedBox(height: 24),
                   Text('Native media boundary: $nativeBoundary'),
+                  Text('Secure store: $secureStoreState'),
                   Text('Last hardware key: $lastKey'),
                   Text('NSD: $discoveryState'),
                   const SizedBox(height: 16),
                   ElevatedButton(onPressed: probeNativeBoundary, child: const Text('Probe native boundary')),
+                  ElevatedButton(onPressed: probeSecureStore, child: const Text('Probe Android Keystore')),
                   ElevatedButton(onPressed: startDiscoveryProbe, child: const Text('Probe PRISMA NSD')),
                   const Spacer(),
                   const Text('Diagnostic harness only — not product UI.'),
