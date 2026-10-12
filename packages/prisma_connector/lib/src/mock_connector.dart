@@ -178,12 +178,15 @@ class MockPrismaConnector implements PrismaConnector {
     switch (command.type) {
       case 'SET_POWER':
         _state = _copyState(power: command.payload['power'] as bool? ?? false);
+        break;
       case 'SET_INTENSITY':
         final value = command.payload['intensity'] as int? ?? _state.intensity;
         _state = _copyState(intensity: value);
+        break;
       case 'SET_MODE':
         final raw = command.payload['mode'] as String? ?? 'BYPASS';
         _state = _copyState(mode: raw == 'RANDOM' ? SynthesisMode.random : SynthesisMode.bypass);
+        break;
       default:
         return {
           'ok': false,
