@@ -31,6 +31,7 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 
 - `decisions/ADR-001-MOBILE-STACK.md` — proposed Flutter application shell + native media/platform boundary; not accepted until the Android spike is validated.
 - `decisions/ADR-002-ACCOUNT-IDENTITY-AND-LICENSING.md` — provider-independent PRISMA account, Google-first Android login, backend-issued sessions, normalized entitlements and offline licensing.
+- `decisions/ADR-003-APPLIANCE-PAIRING-SECURITY.md` — proposed first-pairing + authenticated local-session architecture grounded in ESP32-S3 / ESP-IDF capabilities; remains PROPOSED until hardware measurements and security validation pass.
 
 ## Implemented non-UI packages
 
@@ -63,6 +64,21 @@ Remote-runtime infrastructure for:
 - typed HTTP/transport exceptions;
 - integration tests for commands/conflicts/resynchronization/reconnect.
 
+### `packages/prisma_security`
+
+Platform-neutral appliance-trust contracts for:
+
+- trust-state transitions;
+- secure profile selection;
+- explicit fail-closed legacy behavior;
+- pairing request/result models;
+- opaque credential references;
+- authenticated appliance-session metadata;
+- secure-store adapter boundary for Android Keystore / iOS Keychain;
+- pairing/auth/revoke adapter boundary.
+
+No production cryptographic implementation is claimed yet.
+
 ### `packages/prisma_mock_appliance`
 
 Development/test appliance process for:
@@ -86,6 +102,10 @@ The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for
 - `_prisma-pi._tcp` service discovery diagnostics.
 
 This is still diagnostic infrastructure, not product UI.
+
+## CI policy
+
+Foundation CI runs on the open pull request and supports manual dispatch. Workflow concurrency cancels obsolete in-progress runs when a newer foundation commit supersedes them, preventing stale validation queues from hiding the state of the current branch.
 
 ## Related sources of truth
 
