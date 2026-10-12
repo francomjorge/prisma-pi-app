@@ -11,11 +11,39 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        val mediaBridge = AndroidMediaBridge(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "prisma.pi/media")
             .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "ping" -> result.success(mapOf("platform" to "android", "boundary" to "ok"))
-                    else -> result.notImplemented()
+                try {
+                    when (call.method) {
+                        "ping" -> result.success(
+                            mapOf("platform" to "android", "boundary" to "ok")
+                        )
+                        "inspectUri" -> {
+                            val uri = call.argument<String>("uri")
+                                ?: error("uri is required")
+                            result.success(mediaBridge.inspectUri(uri))
+                        }
+                        "copyUriToFile" -> {
+                            val uri = call.argument<String>("uri")
+                                ?: error("uri is required")
+                            val targetPath = call.argument<String>("target_path")
+                                ?: error("target_path is required")
+                            result.success(mediaBridge.copyUriToFile(uri, targetPath))
+                        }
+                        "probeManagedFile" -> {
+                            val path = call.argument<String>("path")
+                                ?: error("path is required")
+                            result.success(mediaBridge.probeManagedFile(path))
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (error: Exception) {
+                    result.error(
+                        "MEDIA_BRIDGE_FAILED",
+                        error.message ?: error.javaClass.simpleName,
+                        null,
+                    )
                 }
             }
 
