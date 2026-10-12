@@ -100,4 +100,23 @@ class MediaEndpoint {
         'latency_class': latencyClass,
         'session_descriptor': sessionDescriptor,
       };
+
+  factory MediaEndpoint.fromJson(Map<String, dynamic> json) => MediaEndpoint(
+        purpose: switch (json['purpose'] as String? ?? '') {
+          'SOURCE_PREVIEW' => MediaPurpose.sourcePreview,
+          'PROCESSED_PREVIEW' => MediaPurpose.processedPreview,
+          'PROGRAM_OUTPUT' => MediaPurpose.programOutput,
+          final value => throw FormatException('Unknown media purpose: $value'),
+        },
+        transport: json['transport'] as String,
+        codecOrFormat: json['codec_or_format'] as String,
+        width: json['width'] as int? ?? 0,
+        height: json['height'] as int? ?? 0,
+        fps: (json['fps'] as num? ?? 0).toDouble(),
+        audio: json['audio'] as bool? ?? false,
+        latencyClass: json['latency_class'] as String? ?? 'unspecified',
+        sessionDescriptor: Map<String, dynamic>.from(
+          json['session_descriptor'] as Map? ?? const {},
+        ),
+      );
 }
