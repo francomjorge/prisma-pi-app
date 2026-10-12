@@ -1,10 +1,20 @@
 import 'package:flutter/services.dart';
 import 'package:prisma_storage/prisma_storage.dart';
 
+class AndroidMediaImportDiagnosticResult {
+  const AndroidMediaImportDiagnosticResult({
+    required this.asset,
+    required this.decodeProbe,
+  });
+
+  final MediaAsset asset;
+  final Map<String, dynamic> decodeProbe;
+}
+
 /// M0-only orchestration proving the production boundary shape:
 ///
 /// Android SAF URI -> platform materializer -> importer-owned staging -> native
-/// media probe -> managed PRISMA file -> metadata repository.
+/// media probe -> managed PRISMA file -> metadata repository -> native decode.
 ///
 /// The metadata repository remains in-memory in this disposable spike. Durable
 /// SQLite is validated separately by `prisma_storage`; Android SQLite packaging
@@ -18,7 +28,7 @@ class AndroidMediaImportDiagnostic {
       InMemoryMediaMetadataRepository();
   ManagedStorageLayout? _layout;
 
-  Future<MediaAsset?> pickAndImport() async {
+  Future<AndroidMediaImportDiagnosticResult?> pickAndImport() async {
     final uri = await channel.invokeMethod<String>('pickMedia');
     if (uri == null || uri.isEmpty) return null;
 
@@ -40,7 +50,7 @@ class AndroidMediaImportDiagnostic {
       probe: _AndroidChannelMediaProbe(channel),
     );
 
-    return importer.import(CallbackAssetImportSource(
+    final asset = await importer.import(CallbackAssetImportSource(
       displayName: displayName,
       originalReference: uri,
       materializer: (targetPath) async {
@@ -56,9 +66,44 @@ class AndroidMediaImportDiagnostic {
         }
       },
     ));
+
+    final managedPath = layout.resolveManagedLocation(asset.managedLocation);
+    final decodeProbe = await _decodeProbe(asset, managedPath);
+    return AndroidMediaImportDiagnosticResult(
+      asset: asset,
+      decodeProbe: decodeProbe,
+    );
   }
 
   Future<List<MediaAsset>> listImportedAssets() => _repository.listAssets();
+
+  Future<Map<String, dynamic>> _decodeProbe(
+    MediaAsset asset,
+    String managedPath,
+  ) async {
+    switch (asset.type) {
+      case MediaAssetType.image:
+        return (await channel.invokeMapMethod<String, dynamic>(
+              'decodeImageFile',
+              {'path': managedPath},
+            )) ??
+            const {'backend': 'NO_RESULT'};
+      case MediaAssetType.video:
+        final duration = asset.durationMs ?? 0;
+        final midpoint = duration ~/ 2;
+        final timeMs = midpoint > 1000 ? 1000 : midpoint;
+        return (await channel.invokeMapMethod<String, dynamic>(
+              'decodeVideoFrame',
+              {
+                'path': managedPath,
+                'time_ms': timeMs,
+              },
+            )) ??
+            const {'backend': 'NO_RESULT'};
+      case MediaAssetType.audioReserved:
+        throw StateError('Standalone audio is not enabled in M0');
+    }
+  }
 
   String _displayName(Map<String, dynamic>? info, String uri) {
     final fromProvider = info?['display_name'];
