@@ -81,6 +81,7 @@ class MediaImporter {
     final stagingPath = p.join(layout.importStagingDir, '$assetId.part');
     final stagingFile = File(stagingPath);
     String? committedPath;
+    var metadataCommitted = false;
 
     try {
       await _copyToStaging(source, stagingFile);
@@ -140,9 +141,8 @@ class MediaImporter {
 
       try {
         await repository.insertAsset(asset);
+        metadataCommitted = true;
       } catch (error) {
-        await _deleteIfExists(File(destinationPath));
-        committedPath = null;
         throw MediaImportException(
           'METADATA_COMMIT_FAILED',
           'Media bytes were committed but metadata commit failed',
@@ -161,12 +161,8 @@ class MediaImporter {
       );
     } finally {
       await _deleteIfExists(stagingFile);
-      // If an exception escaped after a managed-file commit but before a
-      // metadata record existed, remove the file. Metadata failures already do
-      // this explicitly; this guard covers unexpected exceptions in-between.
-      if (committedPath != null) {
-        final record = await repository.getAsset(assetId);
-        if (record == null) await _deleteIfExists(File(committedPath));
+      if (committedPath != null && !metadataCommitted) {
+        await _deleteIfExists(File(committedPath));
       }
     }
   }
@@ -238,6 +234,7 @@ class MediaImporter {
             'Image dimensions are invalid',
           );
         }
+        break;
       case MediaAssetType.video:
         if ((result.width ?? 0) <= 0 ||
             (result.height ?? 0) <= 0 ||
@@ -247,6 +244,7 @@ class MediaImporter {
             'Video dimensions or duration are invalid',
           );
         }
+        break;
       case MediaAssetType.audioReserved:
         throw const MediaImportException(
           'AUDIO_NOT_ENABLED',
