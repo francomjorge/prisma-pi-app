@@ -11,13 +11,33 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `architecture/MOBILE-FOUNDATION-2.0.md` — mobile runtime topology, execution modes, connectors, processing graph and infrastructure gates.
 - `protocol/PROTOCOL-2.0.md` — mobile ↔ appliance discovery, control, events, capabilities, media negotiation and compatibility.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
-- `SECURITY-PAIRING.md` — trust, pairing, credential handling and production security constraints.
+- `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
+- `SECURITY-PAIRING.md` — appliance trust, pairing, credential handling and production transport-security constraints. Account login is a separate trust domain.
 - `MEDIA-LIVE-VIEW.md` — source/processed/program media semantics and endpoint selection.
 - `UI-SKIN-CONTRACT.md` — UI boundaries, design tokens, skins and input abstraction; no concrete production screens yet.
 - `LEGACY-WEB-REFERENCE.md` — functionality already proven or prototyped in the existing web controller and branches.
 - `ROADMAP-INFRA-FIRST.md` — implementation order and validation gates.
-- `PROJECT-STATUS.md` — current status by subsystem using DESIGNED → IMPLEMENTED → BUILT → STATICALLY_VERIFIED → HARDWARE_TESTED → BASELINE.
-- `REPOSITORY-LAYOUT.md` — intended application repository organization before code lands.
+- `PROJECT-STATUS.md` — current status by subsystem using DESIGNED → IMPLEMENTED → BUILT → STATICALLY_VERIFIED → RUNTIME_VERIFIED → HARDWARE_TESTED → BASELINE.
+- `REPOSITORY-LAYOUT.md` — intended application repository organization.
+
+## Architecture decisions
+
+- `decisions/ADR-001-MOBILE-STACK.md` — proposed Flutter application shell + native media/platform boundary; not accepted until the Android spike is validated.
+- `decisions/ADR-002-ACCOUNT-IDENTITY-AND-LICENSING.md` — provider-independent PRISMA account, Google-first Android login, backend-issued sessions, normalized entitlements and offline licensing.
+
+## Implemented non-UI packages
+
+`packages/prisma_domain` contains the initial platform-neutral product contracts for:
+
+- synthesizer state;
+- protocol envelopes/events;
+- devices/capabilities/media endpoints;
+- processing graph;
+- account identity;
+- authentication state;
+- license entitlements.
+
+These are infrastructure contracts, not final UI code.
 
 ## Related sources of truth
 
