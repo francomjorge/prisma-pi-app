@@ -21,21 +21,21 @@ A later status includes evidence from previous stages only when that evidence ac
 | Repository baseline | IMPLEMENTED | App repository initialized; active work is isolated in `infra-foundation`. |
 | Mobile architecture | DESIGNED | Foundation contract documented; review/freeze pending. |
 | Mobile stack ADR | DESIGNED | Flutter + native boundary remains PROPOSED until M0 real-device validation. |
-| Platform-neutral domain package | STATICALLY_VERIFIED_BASELINE | State, protocol, devices, processing graph, account and entitlement contracts have a recorded green CI baseline; later branch changes still pass through the current gate. |
+| Platform-neutral domain package | STATICALLY_VERIFIED | State, protocol, devices, processing graph, account and entitlement contracts pass the recorded foundation gate. |
 | Protocol 2.0 | PARTIAL_IMPLEMENTATION | Reference HTTP + WebSocket client/server path, media endpoints, events, timeouts, command idempotency and reconnect behavior implemented; production security and hardware adapter remain pending. |
-| Connector abstraction | IMPLEMENTED | `prisma_connector` defines transport-neutral discovery/control/event/session contracts plus a transport-neutral failure model. |
-| Protocol 2.0 LAN connector | IMPLEMENTED | HTTP control + WebSocket events, typed HTTP/transport failures and request/event-connect timeouts implemented. |
-| Remote session manager | IMPLEMENTED | Bootstrap, authoritative snapshot mirror, command gate, generation recovery and bounded automatic reconnect implemented. |
-| Reconnect/backoff | IMPLEMENTED | Bounded exponential policy plus explicit `reconnectNow()` and deterministic test policy. |
-| Command idempotency reference | IMPLEMENTED | Reference mock caches exact `command_id` retransmissions and rejects divergent reuse with `COMMAND_ID_REUSE`. |
-| In-memory Mock Appliance | IMPLEMENTED | Deterministic connector supports commands, generation gaps and event-channel failure injection. |
-| Network Mock Appliance | IMPLEMENTED | HTTP/WebSocket server supports forced WS disconnect, one-shot HTTP faults, latency and timeout test scenarios. |
-| Discovery coordinator | IMPLEMENTED | Multiple discovery providers merge into stable `DiscoveryRecord` observations with duplicate suppression and endpoint/capability-change emission. |
-| Android NSD/mDNS adapter | SPIKE_COMPILES | Kotlin `NsdManager` diagnostic bridge emits `_prisma-pi._tcp` observations through Flutter EventChannel; real-device/local-network-permission validation not performed. |
-| Legacy ESP32 connector | IMPLEMENTED_PENDING_CURRENT_CI | Read-only adapter maps protected `/api/state` and `/source/*` behavior into `PrismaState`, capabilities, polling events and JPEG MediaEndpoint without changing firmware. Physical appliance validation still pending. |
+| Connector abstraction | STATICALLY_VERIFIED | `prisma_connector` defines transport-neutral discovery/control/event/session contracts plus transport-neutral failure behavior. |
+| Protocol 2.0 LAN connector | RUNTIME_VERIFIED | HTTP control + WebSocket events, failures and timeouts execute against the loopback network Mock Appliance. Hardware/Wi-Fi validation pending. |
+| Remote session manager | RUNTIME_VERIFIED | Bootstrap, authoritative snapshot mirror, command gate, generation recovery and automatic reconnect execute in deterministic integration tests. |
+| Reconnect/backoff | RUNTIME_VERIFIED | Bounded exponential policy and `reconnectNow()` tested through in-memory and real WebSocket disconnect paths. |
+| Command idempotency reference | RUNTIME_VERIFIED | Exact `command_id` retransmission is non-mutating; divergent reuse fails with `COMMAND_ID_REUSE`. |
+| In-memory Mock Appliance | RUNTIME_VERIFIED | Deterministic connector executes command, generation-gap and event-channel fault scenarios. |
+| Network Mock Appliance | RUNTIME_VERIFIED | Real loopback HTTP/WebSocket server executes disconnect, transient HTTP failure, latency and timeout scenarios. |
+| Discovery coordinator | STATICALLY_VERIFIED | Provider merge/dedup and endpoint/capability-change behavior pass tests. |
+| Android NSD/mDNS adapter | BUILT | Kotlin `NsdManager` diagnostic bridge compiles into the debug Android APK; physical-device/local-network-permission behavior remains unverified. |
+| Legacy ESP32 connector | STATICALLY_VERIFIED | Adapter tests match protected `/api/state` schema, capability limitations, polling reconciliation and JPEG MediaEndpoint. Physical appliance validation pending. |
 | Legacy appliance security | COMPATIBILITY_ONLY | Current ESP32-S3 open SoftAP/plain HTTP baseline is explicitly `LEGACY_UNAUTHENTICATED`, never silently preferred. |
 | Managed storage architecture | DESIGNED | Durable layout, SQLite target, projects, recordings, cache, migrations and reference rules documented. |
-| Managed storage runtime | IMPLEMENTED_PENDING_CURRENT_CI | `prisma_storage` implements managed layout, transactional staged import, SHA-256, image/video validation boundary, rollback and startup recovery scan. |
+| Managed storage runtime | RUNTIME_VERIFIED | Managed layout, staged image/video import, SHA-256, validation, rollback and startup recovery execute against temporary filesystems in CI. |
 | SQLite metadata adapter | NOT_STARTED | Repository boundary exists; durable SQLite implementation and migrations still pending. |
 | Android file/content URI adapter | NOT_STARTED | Import stream abstraction exists; platform picker/content resolver adapter pending. |
 | Cloud account identity | DESIGNED + PARTIAL_IMPLEMENTATION | Provider-independent account/domain model implemented; Google production flow/backend not implemented. |
@@ -46,8 +46,8 @@ A later status includes evidence from previous stages only when that evidence ac
 | Offline license continuity | DESIGNED | Internet loss must not stop an active performance; exact freshness/grace policy pending. |
 | Store purchase abstraction | DESIGNED | Store SDK behavior must normalize through backend-verified entitlements. |
 | Privacy/account deletion | DESIGNED | Local media remains local by default; deletion/retention contract still to implement. |
-| Appliance security/pairing contract | IMPLEMENTED | `prisma_security` defines trust states, profile policy, credential references, secure-store and pairing-client boundaries. |
-| Android secure credential adapter | SPIKE_COMPILES_PENDING_CURRENT_CI | M0 Keystore bridge uses non-exportable AndroidKeyStore AES-GCM key with encrypted private-app-storage blob; physical runtime/restart tests pending. |
+| Appliance security/pairing contract | STATICALLY_VERIFIED | `prisma_security` trust/profile/credential/secure-store interfaces and fail-closed profile policy pass CI. |
+| Android secure credential adapter | BUILT | M0 Keystore bridge compiles into the Android APK using AndroidKeyStore AES-GCM + encrypted private-app-storage blob. Runtime/restart/revoke tests on a phone remain pending. |
 | Appliance production security profile | PROPOSED | ADR-003 proposes protocomm Security 2 for first pairing and pinned TLS/authenticated short-lived sessions for normal control; hardware measurement required before acceptance. |
 | Account vs appliance trust separation | DESIGNED | Cloud identity and local appliance pairing are separate trust domains. |
 | Local image decode | NOT_STARTED | Required before production UI. |
@@ -56,38 +56,48 @@ A later status includes evidence from previous stages only when that evidence ac
 | Processing graph | IMPLEMENTED_CONTRACT | Ordered node model exists in domain package; processor runtime not implemented. |
 | Skin/token system | DESIGNED | Contract defined; schema implementation pending. |
 | Input/keyboard action layer | PARTIAL_IMPLEMENTATION | M0 spike includes keyboard/native bridge diagnostics; product action layer pending. |
-| Android app shell | SPIKE_ONLY | Diagnostic M0 shell exists; production UI intentionally blocked. |
+| Android app shell | BUILT_SPIKE | Diagnostic M0 Flutter/Kotlin shell builds as debug APK; product UI remains blocked. |
 | Production UI | BLOCKED | Must not begin before foundation exit criteria. |
 | Google Play distribution | PENDING | Needed at first signed internal-testing build; account/auth configuration will then use final package/signing identities. |
 | iOS implementation | FUTURE | Starts after Android foundation stabilizes. |
 
 ## Validation evidence
 
-A full foundation gate was green at commit:
+Latest expanded green gate:
 
 ```text
-156efa93d48805f1efcf8a4bfde3dba9e800898d
-foundation-validation run #138 / 38215256850
+e6f2bdd6b816909d61cd0c3a72686526aeb7a580
+foundation-validation run #161 / 38216669784
 ```
 
-That evidence covers domain, security contracts, connector/session, network Protocol 2.0 and the Android M0 build as they existed at that commit. It is recorded in `docs/validation/FOUNDATION-CI-EVIDENCE.md`.
+All six jobs passed:
 
-The branch has since added Android Keystore diagnostics, the Legacy ESP32 adapter and the managed-storage runtime. The current six-job gate must complete successfully before those newer increments are promoted to `STATICALLY_VERIFIED`.
+```text
+domain
+security-contracts
+storage-runtime
+connector-session
+network-protocol-integration
+android-stack-spike
+```
+
+The complete scope and limitations of this evidence are recorded in `docs/validation/FOUNDATION-CI-EVIDENCE.md`.
+
+This is not physical Android or ESP32 evidence. In particular, Android NSD/Keystore behavior and the Legacy ESP32 connector still require target-hardware validation.
 
 CI concurrency cancels obsolete in-progress PR runs so only the newest revision matters.
 
 ## Next coherent work packages
 
-1. make the current six-way CI gate green: domain, security, storage, connector/legacy, network Protocol 2.0 and Android M0;
-2. run Android M0 on a physical device and validate `NsdManager`, local-network permission behavior, Keystore round-trip/restart, keyboard input and native boundary;
-3. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
-4. implement SQLite metadata repository + migrations and Android content-URI import adapter;
-5. implement native image/video media metadata/decode spike;
-6. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
-7. measure protocomm Security 2 + HTTPS/WSS flash/RAM/latency costs and validate revoke/replay/fingerprint-failure behavior;
-8. implement account backend API skeleton and signed offline-entitlement proof;
-9. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
-10. only then begin production UI composition.
+1. run Android M0 on a physical device and validate `NsdManager`, local-network permission behavior, Keystore round-trip/restart, keyboard input and native boundary;
+2. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
+3. implement SQLite metadata repository + migrations and Android content-URI import adapter;
+4. implement native image/video media metadata/decode spike;
+5. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
+6. measure protocomm Security 2 + HTTPS/WSS flash/RAM/latency costs and validate revoke/replay/fingerprint-failure behavior;
+7. implement account backend API skeleton and signed offline-entitlement proof;
+8. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
+9. only then begin production UI composition.
 
 ## Protected external baselines
 
