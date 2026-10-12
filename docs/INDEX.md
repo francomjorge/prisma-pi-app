@@ -11,8 +11,9 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `architecture/MOBILE-FOUNDATION-2.0.md` — mobile runtime topology, execution modes, connectors, processing graph and infrastructure gates.
 - `protocol/PROTOCOL-2.0.md` — mobile ↔ appliance discovery, control, events, capabilities, media negotiation and compatibility.
 - `protocol/NETWORK-MOCK-APPLIANCE.md` — real HTTP + WebSocket Protocol 2.0 reference path, network Mock Appliance, session sequence and integration-test scope.
-- `connectivity/CONNECTOR-SESSION-RUNTIME.md` — transport-neutral connector API, appliance-session state machine, generation synchronization, reconnect and legacy-adapter boundaries.
-- `testing/MOCK-APPLIANCE.md` — deterministic Mock Appliance strategy, current in-memory implementation, fault-injection plan and integration-test matrix.
+- `connectivity/CONNECTOR-SESSION-RUNTIME.md` — transport-neutral connector API, appliance-session state machine, generation synchronization, reconnect, timeouts and legacy-adapter boundaries.
+- `connectivity/ANDROID-LOCAL-NETWORK-DISCOVERY.md` — Android NSD/mDNS boundary, local-network permission evolution, `_prisma-pi._tcp` discovery and validation gates.
+- `testing/MOCK-APPLIANCE.md` — deterministic in-memory + network Mock Appliance strategy, implemented fault injection and integration-test matrix.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
@@ -47,16 +48,20 @@ Initial platform-neutral product contracts for:
 
 ### `packages/prisma_connector`
 
-Initial remote-runtime infrastructure for:
+Remote-runtime infrastructure for:
 
 - connector transport abstraction;
 - discovery records;
+- discovery-provider coordinator with device-id deduplication;
 - connection health;
 - remote appliance session lifecycle;
+- bounded reconnect/backoff;
 - full-state synchronization and generation-gap recovery;
 - deterministic in-memory Mock Appliance;
 - Protocol 2.0 LAN/Wi-Fi HTTP + WebSocket connector;
-- integration tests for commands/conflicts/resynchronization.
+- HTTP/socket timeout normalization;
+- typed HTTP/transport exceptions;
+- integration tests for commands/conflicts/resynchronization/reconnect.
 
 ### `packages/prisma_mock_appliance`
 
@@ -67,9 +72,20 @@ Development/test appliance process for:
 - WebSocket event channel;
 - network command/state/capability/media tests;
 - generation-gap fault injection;
-- future disconnect/latency/schema fault injection.
+- forced WebSocket disconnect;
+- one-shot HTTP failures;
+- artificial latency and timeout tests.
 
-These are infrastructure contracts and runtime components, not final UI code.
+## Android M0 spike
+
+The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for:
+
+- native method-channel access;
+- physical keyboard events;
+- Android `NsdManager` / DNS-SD discovery through an EventChannel;
+- `_prisma-pi._tcp` service discovery diagnostics.
+
+This is still diagnostic infrastructure, not product UI.
 
 ## Related sources of truth
 
