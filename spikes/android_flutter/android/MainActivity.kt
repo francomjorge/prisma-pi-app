@@ -24,6 +24,10 @@ class MainActivity : FlutterActivity() {
             "prisma.pi/native_media_surface",
             AndroidMediaSurfaceFactory(this),
         )
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "prisma.pi/gpu_video_surface",
+            AndroidGpuVideoSurfaceFactory(),
+        )
 
         val mediaBridge = AndroidMediaBridge(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "prisma.pi/media")
