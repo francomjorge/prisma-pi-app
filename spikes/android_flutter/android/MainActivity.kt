@@ -50,6 +50,17 @@ class MainActivity : FlutterActivity() {
                                 ?: error("path is required")
                             result.success(mediaBridge.probeManagedFile(path))
                         }
+                        "decodeImageFile" -> {
+                            val path = call.argument<String>("path")
+                                ?: error("path is required")
+                            result.success(mediaBridge.decodeImageFile(path))
+                        }
+                        "decodeVideoFrame" -> {
+                            val path = call.argument<String>("path")
+                                ?: error("path is required")
+                            val timeMs = call.argument<Number>("time_ms")?.toLong() ?: 0L
+                            result.success(mediaBridge.decodeVideoFrame(path, timeMs))
+                        }
                         else -> result.notImplemented()
                     }
                 } catch (error: Exception) {
