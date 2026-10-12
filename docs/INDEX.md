@@ -10,9 +10,12 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 
 - `architecture/MOBILE-FOUNDATION-2.0.md` — mobile runtime topology, execution modes, connectors, processing graph and infrastructure gates.
 - `protocol/PROTOCOL-2.0.md` — mobile ↔ appliance discovery, control, events, capabilities, media negotiation and compatibility.
+- `connectivity/CONNECTOR-SESSION-RUNTIME.md` — transport-neutral connector API, appliance-session state machine, generation synchronization, reconnect and legacy-adapter boundaries.
+- `testing/MOCK-APPLIANCE.md` — deterministic Mock Appliance strategy, current in-memory implementation, fault-injection plan and integration-test matrix.
 - `storage/MOBILE-STORAGE-2.0.md` — managed library, media import, SQLite metadata, projects, recordings, cache and migration rules.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
+- `accounts/BACKEND-DATA-MODEL.md` — logical account/identity/session/entitlement/purchase persistence model, uniqueness rules and offline snapshot boundary.
 - `accounts/GOOGLE-AUTH-SETUP-CHECKLIST.md` — production Google Auth/Android signing configuration checklist; intentionally deferred until final package/signing identity is chosen.
 - `SECURITY-PAIRING.md` — appliance trust, pairing, credential handling and production transport-security constraints. Account login is a separate trust domain.
 - `MEDIA-LIVE-VIEW.md` — source/processed/program media semantics and endpoint selection.
@@ -29,7 +32,9 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 
 ## Implemented non-UI packages
 
-`packages/prisma_domain` contains the initial platform-neutral product contracts for:
+### `packages/prisma_domain`
+
+Initial platform-neutral product contracts for:
 
 - synthesizer state;
 - protocol envelopes/events;
@@ -39,7 +44,19 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - authentication state;
 - license entitlements.
 
-These are infrastructure contracts, not final UI code.
+### `packages/prisma_connector`
+
+Initial remote-runtime infrastructure for:
+
+- connector transport abstraction;
+- discovery records;
+- connection health;
+- remote appliance session lifecycle;
+- full-state synchronization and generation-gap recovery;
+- deterministic in-memory Mock Appliance;
+- integration tests for commands/conflicts/resynchronization.
+
+These are infrastructure contracts and runtime components, not final UI code.
 
 ## Related sources of truth
 
