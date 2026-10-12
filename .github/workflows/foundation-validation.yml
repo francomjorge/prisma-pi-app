@@ -70,6 +70,21 @@ jobs:
         working-directory: packages/prisma_media_runtime
         run: dart test
 
+  processing-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_processing_runtime
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_processing_runtime
+        run: dart analyze --fatal-infos
+      - name: Test graph compilation and native-adapter contracts
+        working-directory: packages/prisma_processing_runtime
+        run: dart test
+
   connector-session:
     runs-on: ubuntu-latest
     steps:
@@ -114,6 +129,7 @@ jobs:
           flutter create --platforms=android --org com.prismapi --project-name prisma_mobile_spike /tmp/prisma_mobile_spike
           cp spikes/android_flutter/lib/main.dart /tmp/prisma_mobile_spike/lib/main.dart
           cp spikes/android_flutter/lib/android_media_import_diagnostic.dart /tmp/prisma_mobile_spike/lib/android_media_import_diagnostic.dart
+          cp spikes/android_flutter/lib/processing_adapter_diagnostic.dart /tmp/prisma_mobile_spike/lib/processing_adapter_diagnostic.dart
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -123,10 +139,16 @@ jobs:
           marker = 'dependencies:\n'
           if marker not in text:
               raise SystemExit('Flutter template has no dependencies section')
-          storage_path = os.path.join(os.environ['GITHUB_WORKSPACE'], 'packages', 'prisma_storage')
+          workspace = os.environ['GITHUB_WORKSPACE']
+          domain_path = os.path.join(workspace, 'packages', 'prisma_domain')
+          processing_path = os.path.join(workspace, 'packages', 'prisma_processing_runtime')
+          storage_path = os.path.join(workspace, 'packages', 'prisma_storage')
           text = text.replace(
               marker,
-              f'dependencies:\n  prisma_storage:\n    path: {storage_path}\n',
+              'dependencies:\n'
+              f'  prisma_domain:\n    path: {domain_path}\n'
+              f'  prisma_processing_runtime:\n    path: {processing_path}\n'
+              f'  prisma_storage:\n    path: {storage_path}\n',
               1,
           )
           pubspec.write_text(text)
@@ -157,6 +179,6 @@ jobs:
       - name: Test spike
         working-directory: /tmp/prisma_mobile_spike
         run: flutter test
-      - name: Build debug APK with native Media3 + SurfaceTexture GPU path
+      - name: Build debug APK with neutral processing plan + native Media3/OES GPU adapter
         working-directory: /tmp/prisma_mobile_spike
         run: flutter build apk --debug
