@@ -40,6 +40,21 @@ jobs:
         working-directory: packages/prisma_security
         run: dart test
 
+  storage-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_storage
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_storage
+        run: dart analyze --fatal-infos
+      - name: Test transactional imports and recovery
+        working-directory: packages/prisma_storage
+        run: dart test
+
   connector-session:
     runs-on: ubuntu-latest
     steps:
@@ -51,7 +66,7 @@ jobs:
       - name: Analyze
         working-directory: packages/prisma_connector
         run: dart analyze --fatal-infos
-      - name: Test in-memory Mock Appliance and session synchronization
+      - name: Test in-memory Mock Appliance, legacy adapter and session synchronization
         working-directory: packages/prisma_connector
         run: dart test
 
