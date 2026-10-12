@@ -28,11 +28,11 @@ import javax.microedition.khronos.opengles.GL10
  * M0 GPU-path spike:
  *
  * Media3 decoder -> Surface -> SurfaceTexture -> GL_TEXTURE_EXTERNAL_OES ->
- * GLSL -> native render target.
+ * GLSL effect stage -> native render target.
  *
- * Raw video frames never cross the Flutter method channel. The fragment shader
- * is intentionally pass-through; later FX work can replace/extend this stage
- * behind a PRISMA-owned processing adapter.
+ * Raw video frames never cross the Flutter method channel. The shader currently
+ * exposes only diagnostic PASS_THROUGH / GRAYSCALE / POSTERIZE modes. It is a
+ * proof of the processing seam, not the production FX engine.
  */
 @UnstableApi
 class AndroidGpuVideoSurfaceFactory :
@@ -55,6 +55,11 @@ private class AndroidGpuVideoPlatformView(
     private val autoplay = params["autoplay"] as? Boolean ?: true
     private val loop = params["loop"] as? Boolean ?: true
     private val muted = params["muted"] as? Boolean ?: true
+    private val effect = ((params["effect"] as? String) ?: "passthrough").lowercase()
+    private val effectAmount = ((params["effect_amount"] as? Number)?.toFloat() ?: 1f)
+        .coerceIn(0f, 1f)
+    private val posterizeLevels = ((params["posterize_levels"] as? Number)?.toFloat() ?: 6f)
+        .coerceIn(2f, 32f)
 
     private var player: ExoPlayer? = null
     private var tracked = false
@@ -63,6 +68,9 @@ private class AndroidGpuVideoPlatformView(
     private val gpuView = PrismaGpuVideoView(
         context = context,
         fit = fit,
+        effect = effect,
+        effectAmount = effectAmount,
+        posterizeLevels = posterizeLevels,
         onSurfaceReady = surfaceReady@{ surface, renderer ->
             if (disposed || player != null) return@surfaceReady
             require(File(path).isFile) { "GPU video path does not exist: $path" }
@@ -112,9 +120,19 @@ private class AndroidGpuVideoPlatformView(
 private class PrismaGpuVideoView(
     context: Context,
     fit: String,
+    effect: String,
+    effectAmount: Float,
+    posterizeLevels: Float,
     onSurfaceReady: (Surface, OesVideoRenderer) -> Unit,
 ) : GLSurfaceView(context) {
-    private val videoRenderer = OesVideoRenderer(this, fit, onSurfaceReady)
+    private val videoRenderer = OesVideoRenderer(
+        hostView = this,
+        fit = fit,
+        effect = effect,
+        effectAmount = effectAmount,
+        posterizeLevels = posterizeLevels,
+        onSurfaceReady = onSurfaceReady,
+    )
     private var released = false
 
     init {
@@ -135,8 +153,16 @@ private class PrismaGpuVideoView(
 private class OesVideoRenderer(
     private val hostView: GLSurfaceView,
     private val fit: String,
+    effect: String,
+    private val effectAmount: Float,
+    private val posterizeLevels: Float,
     private val onSurfaceReady: (Surface, OesVideoRenderer) -> Unit,
 ) : GLSurfaceView.Renderer {
+    private val effectMode = when (effect) {
+        "grayscale" -> 1f
+        "posterize" -> 2f
+        else -> 0f
+    }
     private val vertices: FloatBuffer = floatBufferOf(
         -1f, -1f,
         1f, -1f,
@@ -216,6 +242,9 @@ private class OesVideoRenderer(
         val matrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
         val scaleLocation = GLES20.glGetUniformLocation(program, "uScale")
         val textureLocation = GLES20.glGetUniformLocation(program, "uTexture")
+        val effectModeLocation = GLES20.glGetUniformLocation(program, "uEffectMode")
+        val effectAmountLocation = GLES20.glGetUniformLocation(program, "uEffectAmount")
+        val posterizeLevelsLocation = GLES20.glGetUniformLocation(program, "uPosterizeLevels")
 
         vertices.position(0)
         GLES20.glEnableVertexAttribArray(positionLocation)
@@ -246,6 +275,9 @@ private class OesVideoRenderer(
         )
         GLES20.glUniform2f(scaleLocation, scale.first, scale.second)
         GLES20.glUniformMatrix4fv(matrixLocation, 1, false, textureMatrix, 0)
+        GLES20.glUniform1f(effectModeLocation, effectMode)
+        GLES20.glUniform1f(effectAmountLocation, effectAmount)
+        GLES20.glUniform1f(posterizeLevelsLocation, posterizeLevels)
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
@@ -387,9 +419,25 @@ private class OesVideoRenderer(
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             uniform samplerExternalOES uTexture;
+            uniform float uEffectMode;
+            uniform float uEffectAmount;
+            uniform float uPosterizeLevels;
             varying vec2 vTexCoord;
+
             void main() {
-                gl_FragColor = texture2D(uTexture, vTexCoord);
+                vec4 source = texture2D(uTexture, vTexCoord);
+                vec3 processed = source.rgb;
+
+                if (uEffectMode > 0.5 && uEffectMode < 1.5) {
+                    float luminance = dot(source.rgb, vec3(0.299, 0.587, 0.114));
+                    processed = vec3(luminance);
+                } else if (uEffectMode >= 1.5) {
+                    float levels = max(2.0, uPosterizeLevels);
+                    processed = floor(source.rgb * levels + 0.5) / levels;
+                }
+
+                vec3 outputColor = mix(source.rgb, processed, clamp(uEffectAmount, 0.0, 1.0));
+                gl_FragColor = vec4(outputColor, source.a);
             }
         """
     }
