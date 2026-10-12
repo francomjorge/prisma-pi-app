@@ -36,8 +36,9 @@ A later status includes evidence from previous stages only when that evidence ac
 | Legacy appliance security | COMPATIBILITY_ONLY | Current ESP32-S3 open SoftAP/plain HTTP baseline is explicitly `LEGACY_UNAUTHENTICATED`, never silently preferred. |
 | Managed storage architecture | DESIGNED | Durable layout, SQLite target, projects, recordings, cache, migrations and reference rules documented. |
 | Managed storage runtime | RUNTIME_VERIFIED | Managed layout, staged image/video import, SHA-256, validation, rollback and startup recovery execute against temporary filesystems in CI. |
-| SQLite metadata adapter | NOT_STARTED | Repository boundary exists; durable SQLite implementation and migrations still pending. |
-| Android file/content URI adapter | NOT_STARTED | Import stream abstraction exists; platform picker/content resolver adapter pending. |
+| SQLite metadata adapter | IMPLEMENTED_PENDING_CURRENT_CI | Durable `SqliteMediaMetadataRepository`, schema migration v1, persistence/reopen tests, uniqueness constraints and ordered asset retrieval implemented. |
+| Android content URI adapter | BUILT_PENDING_CURRENT_CI | M0 `ContentResolver` bridge inspects user-selected URIs and copies granted content into controlled app paths without depending on external absolute paths. Physical SAF picker/grant validation pending. |
+| Android native media metadata probe | BUILT_PENDING_CURRENT_CI | M0 bridge probes image dimensions/MIME with `BitmapFactory` and video dimensions/duration/audio/frame-rate metadata with `MediaMetadataRetriever`; real-device codec coverage pending. |
 | Cloud account identity | DESIGNED + PARTIAL_IMPLEMENTATION | Provider-independent account/domain model implemented; Google production flow/backend not implemented. |
 | Google Android sign-in | DESIGNED | Credential Manager / Sign in with Google selected as preferred Android path; production OAuth configuration intentionally not frozen during M0. |
 | iOS identity provider | DESIGNED | Sign in with Apple reserved as equivalent provider for the iOS target. |
@@ -50,8 +51,8 @@ A later status includes evidence from previous stages only when that evidence ac
 | Android secure credential adapter | BUILT | M0 Keystore bridge compiles into the Android APK using AndroidKeyStore AES-GCM + encrypted private-app-storage blob. Runtime/restart/revoke tests on a phone remain pending. |
 | Appliance production security profile | PROPOSED | ADR-003 proposes protocomm Security 2 for first pairing and pinned TLS/authenticated short-lived sessions for normal control; hardware measurement required before acceptance. |
 | Account vs appliance trust separation | DESIGNED | Cloud identity and local appliance pairing are separate trust domains. |
-| Local image decode | NOT_STARTED | Required before production UI. |
-| Local looping video decode | NOT_STARTED | Required before production UI. |
+| Local image decode | PARTIAL_SPIKE | Native image metadata probing exists; frame decode/render/performance validation remains pending. |
+| Local looping video decode | PARTIAL_SPIKE | Native video metadata probing exists; playback/loop/decode/render pipeline remains pending. |
 | Media endpoint negotiation | PARTIAL_IMPLEMENTATION | Endpoint model, Protocol 2.0 decode and session acquisition implemented; platform media transport selection/runtime pending. |
 | Processing graph | IMPLEMENTED_CONTRACT | Ordered node model exists in domain package; processor runtime not implemented. |
 | Skin/token system | DESIGNED | Contract defined; schema implementation pending. |
@@ -63,41 +64,31 @@ A later status includes evidence from previous stages only when that evidence ac
 
 ## Validation evidence
 
-Latest expanded green gate:
+Latest fully recorded green gate before the SQLite/media-bridge increment:
 
 ```text
-e6f2bdd6b816909d61cd0c3a72686526aeb7a580
-foundation-validation run #161 / 38216669784
+202476e231128994835cb5bd511be3be1f03d61e
+foundation-validation run #163 / 38217104070
 ```
 
-All six jobs passed:
+All foundation jobs passed on that head. The current branch has since added durable SQLite metadata persistence plus Android ContentResolver/media-probe infrastructure; the newest six-job gate must complete successfully before those increments are promoted from `*_PENDING_CURRENT_CI`.
 
-```text
-domain
-security-contracts
-storage-runtime
-connector-session
-network-protocol-integration
-android-stack-spike
-```
-
-The complete scope and limitations of this evidence are recorded in `docs/validation/FOUNDATION-CI-EVIDENCE.md`.
-
-This is not physical Android or ESP32 evidence. In particular, Android NSD/Keystore behavior and the Legacy ESP32 connector still require target-hardware validation.
+This is not physical Android or ESP32 evidence. Android NSD/Keystore/ContentResolver/media behavior and the Legacy ESP32 connector still require target-hardware validation.
 
 CI concurrency cancels obsolete in-progress PR runs so only the newest revision matters.
 
 ## Next coherent work packages
 
-1. run Android M0 on a physical device and validate `NsdManager`, local-network permission behavior, Keystore round-trip/restart, keyboard input and native boundary;
-2. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
-3. implement SQLite metadata repository + migrations and Android content-URI import adapter;
-4. implement native image/video media metadata/decode spike;
-5. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
-6. measure protocomm Security 2 + HTTPS/WSS flash/RAM/latency costs and validate revoke/replay/fingerprint-failure behavior;
-7. implement account backend API skeleton and signed offline-entitlement proof;
-8. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
-9. only then begin production UI composition.
+1. make the current gate green for SQLite persistence and Android media bridge compilation;
+2. run Android M0 on a physical device and validate `NsdManager`, local-network permission behavior, Keystore round-trip/restart, keyboard input, ContentResolver imports and native media metadata probing;
+3. physically validate `LegacyEsp32Connector` against the protected ESP32-S3 firmware without modifying that firmware;
+4. connect the Android SAF picker/content-grant lifecycle to the managed import transaction and SQLite repository;
+5. implement native image frame decode and looping-video playback/decode spike;
+6. build a disposable ESP32-S3 pairing/security spike on ESP-IDF 5.5.1 without modifying the protected firmware baseline;
+7. measure protocomm Security 2 + HTTPS/WSS flash/RAM/latency costs and validate revoke/replay/fingerprint-failure behavior;
+8. implement account backend API skeleton and signed offline-entitlement proof;
+9. validate Google login with non-production OAuth only after final-enough package/signing identity exists;
+10. only then begin production UI composition.
 
 ## Protected external baselines
 
