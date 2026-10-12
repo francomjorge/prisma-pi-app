@@ -287,20 +287,22 @@ class PrismaMockApplianceServer {
         }
       });
     } catch (error) {
-      if (request.response.headersSent) {
+      try {
+        _sendJson(request, HttpStatus.internalServerError, {
+          'ok': false,
+          'error': {
+            'code': 'MOCK_INTERNAL_ERROR',
+            'message': error.toString(),
+            'retryable': false,
+          }
+        });
+      } catch (_) {
         try {
           await request.response.close();
-        } catch (_) {}
-        return;
-      }
-      _sendJson(request, HttpStatus.internalServerError, {
-        'ok': false,
-        'error': {
-          'code': 'MOCK_INTERNAL_ERROR',
-          'message': error.toString(),
-          'retryable': false,
+        } catch (_) {
+          // Response may already be upgraded or closed.
         }
-      });
+      }
     }
   }
 
