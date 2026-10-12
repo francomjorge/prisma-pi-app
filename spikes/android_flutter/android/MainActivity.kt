@@ -19,6 +19,24 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "prisma.pi/security")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "secureStoreProbe" -> {
+                        try {
+                            result.success(KeystoreSecretBridge(applicationContext).runProbe())
+                        } catch (error: Exception) {
+                            result.error(
+                                "KEYSTORE_PROBE_FAILED",
+                                error.message ?: error.javaClass.simpleName,
+                                null,
+                            )
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "prisma.pi/discovery")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
