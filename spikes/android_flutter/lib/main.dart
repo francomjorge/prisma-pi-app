@@ -81,7 +81,9 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
       setState(() {
         resourceState = 'images=${result?['decoded_image_bytes'] ?? '?'} B · '
             'decoders=${result?['active_video_decoders'] ?? '?'} · '
-            'surfaces=${result?['active_render_surfaces'] ?? '?'}';
+            'surfaces=${result?['active_render_surfaces'] ?? '?'} · '
+            'gpuTex=${result?['active_gpu_textures'] ?? '?'} · '
+            'gpuFbo=${result?['active_gpu_framebuffers'] ?? '?'}';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -206,7 +208,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 Text('Native resources: $resourceState'),
                 if (activeMedia != null)
                   Text(
-                    'Render path: ${isVideo ? 'domain graph → neutral processing plan → Media3/OES/GLSL' : 'target-sized native image'}',
+                    'Render path: ${isVideo ? 'graph → plan → Media3/OES → ping-pong GPU passes → output' : 'target-sized native image'}',
                   ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -227,7 +229,7 @@ class _PrismaAndroidStackSpikeState extends State<PrismaAndroidStackSpike> {
                 ),
                 ElevatedButton(
                   onPressed: probeResources,
-                  child: const Text('Sample native media resources'),
+                  child: const Text('Sample native media/GPU resources'),
                 ),
                 if (activeMedia != null) ...[
                   const SizedBox(height: 16),
