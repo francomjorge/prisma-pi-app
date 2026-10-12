@@ -33,8 +33,23 @@ jobs:
       - name: Analyze
         working-directory: packages/prisma_connector
         run: dart analyze --fatal-infos
-      - name: Test Mock Appliance and session synchronization
+      - name: Test in-memory Mock Appliance and session synchronization
         working-directory: packages/prisma_connector
+        run: dart test
+
+  network-protocol-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Install dependencies
+        working-directory: packages/prisma_mock_appliance
+        run: dart pub get
+      - name: Analyze
+        working-directory: packages/prisma_mock_appliance
+        run: dart analyze --fatal-infos
+      - name: Test Protocol 2.0 over HTTP and WebSocket
+        working-directory: packages/prisma_mock_appliance
         run: dart test
 
   android-stack-spike:
