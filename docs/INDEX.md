@@ -18,7 +18,8 @@ This repository is the working construction repository for the PRISMA-PI mobile 
 - `storage/STORAGE-RUNTIME-IMPLEMENTATION.md` — implemented managed layout, transactional imports, SHA-256 integrity, rollback and startup recovery behavior.
 - `media/MEDIA-RUNTIME-FOUNDATION.md` — SAF/platform materialization, managed-media handoff, native probe/decode boundary and platform-neutral local-media lifecycle.
 - `media/ANDROID-MEDIA-SURFACE-SPIKE.md` — target-sized Android image decode, Media3 native video surface, explicit disposal and resource-counter validation plan.
-- `media/ANDROID-GPU-TEXTURE-SPIKE.md` — Media3 decoder → SurfaceTexture → `GL_TEXTURE_EXTERNAL_OES` → GLSL path for future GPU FX without Dart frame copies.
+- `media/ANDROID-GPU-TEXTURE-SPIKE.md` — Media3 decoder → SurfaceTexture → `GL_TEXTURE_EXTERNAL_OES` → GLSL path for GPU FX without Dart frame copies.
+- `processing/GPU-PROCESSING-RUNTIME.md` — neutral `ProcessingGraph` compiler, schema-versioned `ProcessingPlan`, backend capability gating and Android GPU adapter boundary.
 - `accounts/AUTH-AND-LICENSING.md` — PRISMA account identity, Google/Apple/email provider abstraction, backend sessions, entitlements, purchases and offline licensing.
 - `accounts/BACKEND-API-BOUNDARY.md` — minimal provider-independent backend trust/API boundary for identity, sessions, entitlements and purchase verification.
 - `accounts/BACKEND-DATA-MODEL.md` — logical account/identity/session/entitlement/purchase persistence model, uniqueness rules and offline snapshot boundary.
@@ -121,6 +122,22 @@ Platform-neutral local-media contracts for:
 - memory-pressure release policy and explicit releasable-resource boundary;
 - explicit `MediaResourceRegistry` ownership/byte accounting and idempotent resource leases.
 
+### `packages/prisma_processing_runtime`
+
+Platform-neutral processing execution boundary for:
+
+- backend capability declarations;
+- opaque frame transport categories;
+- local graph compilation from `ProcessingGraph`;
+- mobile/both execution-target selection;
+- strict unsupported-node/capability rejection;
+- optional explicit bypass diagnostics;
+- deterministic `ProcessingPlan` schema v1 serialization;
+- native runtime adapter/session contracts;
+- active processing-node resource limits.
+
+The package contains no Android, Flutter, OpenGL, Vulkan or Metal types.
+
 ### `packages/prisma_mock_appliance`
 
 Development/test appliance process for:
@@ -150,17 +167,19 @@ The disposable Android/Flutter/Kotlin spike now compiles platform boundaries for
 - native video-frame decode probe without moving raw frames through Dart;
 - target-sized still-image rendering through a native Android platform view;
 - Media3 local-video playback/repeat through native surfaces;
-- Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → GLSL diagnostic rendering;
+- Media3 → `Surface` → `SurfaceTexture` → `GL_TEXTURE_EXTERNAL_OES` → GLSL rendering;
+- domain `ProcessingGraph` → neutral schema-versioned `ProcessingPlan` → Android GPU adapter control flow;
+- diagnostic `POSTER` and `GRAYSCALE` shader-node execution without moving raw video frames through Dart;
 - SurfaceTexture transform-matrix sampling on the GL thread;
 - native decoder/surface/decoded-image resource counters and explicit platform-view disposal.
 
-This is still diagnostic infrastructure, not product UI. Sustained looping-video quality, actual GPU-effect processing, color/HDR behavior and real-device resource validation are still required.
+This is still diagnostic infrastructure, not product UI. Multi-pass ordered FX execution, sustained physical-device playback, color/HDR behavior and real-device resource validation are still required.
 
 ## CI policy
 
 Foundation CI runs on the open pull request and supports manual dispatch. Workflow concurrency cancels obsolete in-progress runs when a newer foundation commit supersedes them, preventing stale validation queues from hiding the state of the current branch.
 
-Current gate covers domain, security contracts, managed storage runtime, media-runtime contracts/resource ownership, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests including Media3 plus the SurfaceTexture/OES GPU-path spike.
+Current gate covers domain, security contracts, managed storage runtime, media-runtime contracts/resource ownership, processing-runtime graph compilation, connector/session/legacy compatibility, network Protocol 2.0 integration, and Android M0 compilation/tests including the neutral plan → Media3/SurfaceTexture/OES GPU adapter.
 
 ## Related sources of truth
 
