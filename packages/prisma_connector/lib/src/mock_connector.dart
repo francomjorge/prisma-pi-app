@@ -17,10 +17,13 @@ class MockPrismaConnector implements PrismaConnector {
   bool _connected = false;
   bool _authenticated = false;
   int _eventCounter = 0;
+  int _connectCount = 0;
   ConnectorHealth _health =
       const ConnectorHealth(state: ConnectorState.disconnected);
 
   static const String mockDeviceId = '00000000-0000-4000-8000-000000000001';
+
+  int get connectCount => _connectCount;
 
   @override
   ConnectorTransport get transport => ConnectorTransport.mock;
@@ -48,6 +51,7 @@ class MockPrismaConnector implements PrismaConnector {
     if (record.deviceId != mockDeviceId) {
       throw StateError('Mock connector cannot open ${record.deviceId}');
     }
+    _connectCount += 1;
     _health = const ConnectorHealth(state: ConnectorState.connecting);
     _connected = true;
     _health = const ConnectorHealth(state: ConnectorState.authenticating);
@@ -206,6 +210,20 @@ class MockPrismaConnector implements PrismaConnector {
   Stream<PrismaEvent> events() {
     _requireReady();
     return _events.stream;
+  }
+
+  /// Test-only fault injection: emits a transport-like stream failure without
+  /// destroying the reusable broadcast controller. Session code should enter
+  /// reconnecting and establish a fresh connector session.
+  void injectEventChannelFailure([String message = 'mock event channel failure']) {
+    _requireReady();
+    final error = StateError(message);
+    _health = ConnectorHealth(
+      state: ConnectorState.degraded,
+      detail: 'Injected event-channel failure',
+      lastError: error,
+    );
+    _events.addError(error);
   }
 
   /// Test-only fault injection: mutates the authoritative generation without
