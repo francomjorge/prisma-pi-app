@@ -90,3 +90,52 @@ This gate additionally validates:
 The Android Keystore result here proves **source/build integration only**. It does not prove secure-store runtime behavior on a physical phone; the diagnostic round-trip still needs to be run on-device.
 
 The legacy adapter result proves adapter behavior against a deterministic HTTP fixture. It does not constitute physical validation against the ESP32-S3 appliance.
+
+---
+
+## 2026-10-12 — Expanded green gate: SQLite + media runtime + Media3/OES GPU path
+
+Validated head commit:
+
+```text
+74e4c8d6ad9584ae997f849782ce60a957840fef
+```
+
+GitHub Actions workflow run:
+
+```text
+foundation-validation #216
+run_id: 38269436921
+```
+
+All seven jobs completed successfully:
+
+```text
+domain                        SUCCESS
+security-contracts            SUCCESS
+storage-runtime               SUCCESS
+media-runtime-contract        SUCCESS
+connector-session             SUCCESS
+network-protocol-integration  SUCCESS
+android-stack-spike           SUCCESS
+```
+
+This gate additionally validates in CI:
+
+- durable `SqliteMediaMetadataRepository` schema creation/migration, reopen persistence, uniqueness constraints and deterministic retrieval tests;
+- platform-neutral local-media session contracts;
+- contain/cover/fill/fit-width/fit-height/native-pixel/scale-down decode-size planning;
+- bounded image/cache/decoder/render-surface resource budgets;
+- `MediaResourceRegistry` ownership, byte accounting and idempotent release semantics;
+- Android managed-media bridge source compilation;
+- target-sized native still-image surface compilation;
+- Media3/ExoPlayer native playback-surface compilation;
+- Android `SurfaceTexture` + `Surface` + `GL_TEXTURE_EXTERNAL_OES` + GLSL pass-through GPU-path compilation;
+- Flutter diagnostic routing for video through the GPU texture platform view;
+- full disposable Android debug APK build with Media3 dependencies.
+
+A previous run exposed a Dart language-compatibility defect in a new media test (`digit-separators` while the package minimum remains Dart 3.4). The test was corrected without raising the package minimum, and this run confirms analysis/tests pass on the supported constraint.
+
+This gate does **not** prove that a physical Android device successfully decodes video into the OES texture, that the path is zero-copy on a particular codec/device, or that memory/thermal behavior is production-safe. Those remain physical-device acceptance gates.
+
+The GPU shader in this baseline is intentionally pass-through. Real PRISMA FX processing is not claimed by this evidence.
