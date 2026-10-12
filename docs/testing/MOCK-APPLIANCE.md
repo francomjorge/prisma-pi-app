@@ -1,6 +1,6 @@
 # PRISMA-PI Mock Appliance
 
-**Status:** Initial deterministic implementation  
+**Status:** Networked deterministic implementation  
 **Date:** 2026-10-12
 
 ## 1. Purpose
@@ -30,24 +30,28 @@ The Mock Appliance must eventually cover:
 - device-busy/resource-exhausted failures;
 - fault raised/cleared events.
 
-## 3. Current in-memory implementation
+## 3. Current implementations
 
-`MockPrismaConnector` currently provides:
+PRISMA now has two complementary mock layers.
+
+### In-memory Mock Connector
+
+`MockPrismaConnector` provides fast deterministic Dart tests with no sockets:
 
 ```text
-device_id        stable deterministic UUID
-protocol         PRISMA 2.0
-control events   yes
-expected gen     yes
-media image      yes
-media video      yes
-preview source   yes
+device_id         stable deterministic UUID
+protocol          PRISMA 2.0
+control events    yes
+expected gen      yes
+media image       yes
+media video       yes
+preview source    yes
 preview processed yes
-processing graph advertised
-mock media       RGBA frame endpoint descriptors
+processing graph  advertised
+mock media        RGBA frame endpoint descriptors
 ```
 
-The initial command set is intentionally small:
+Initial command set:
 
 ```text
 SET_POWER
@@ -55,69 +59,92 @@ SET_INTENSITY
 SET_MODE
 ```
 
-This is enough to prove session synchronization before expanding the command matrix.
+### Network Protocol Mock Server
+
+`PrismaMockApplianceServer` exposes a real loopback HTTP/WebSocket Protocol 2.0 target:
+
+```text
+GET  /healthz
+GET  /v2/device
+POST /v2/auth/session
+GET  /v2/capabilities
+GET  /v2/state
+GET  /v2/media/endpoints
+POST /v2/commands
+POST /v2/request
+WS   /v2/events
+```
+
+It deliberately uses a development-only mock session token. It is not the production pairing/security mechanism.
 
 ## 4. Fault injection
 
-Current hooks:
+Current deterministic hooks now include:
 
 ```text
+In-memory:
+injectEventChannelFailure()
+injectGenerationGap()
+injectMediaEndpointChange()
+
+Network server:
+disconnectEventClients()
+setResponseLatency(duration)
+failNextRequest(path, status/code/retryable)
 injectGenerationGap()
 injectMediaEndpointChange()
 ```
 
+These hooks let tests reproduce failures without random sleeps or destructive hardware experiments.
+
 Planned hooks:
 
 ```text
-dropControlTransport()
-restoreControlTransport()
+stopAcceptingConnections()
+restoreSameEndpoint()
 expireTrust()
 changeCapabilityDigest()
 rejectNextCommand(code)
-delayNextResponse(duration)
 corruptNextTransfer()
 fillStorage(percent)
 raiseFault(code)
 clearFault(code)
 ```
 
-Fault injection must be explicit and deterministic so integration tests do not depend on random timing.
+Fault injection must remain explicit and deterministic.
 
 ## 5. Test matrix
 
 Minimum pre-UI matrix:
 
-| Scenario | Expected client behavior |
-|---|---|
-| clean connect | READY with descriptor/capabilities/state/media |
-| valid command | generation increments and state reconciles |
-| stale command generation | explicit `GENERATION_CONFLICT` |
-| duplicate event | ignored |
-| event generation gap | mark stale and full resync |
-| control transport loss | remote state stale, reconnect attempts |
-| media-only loss | control stays READY, media renegotiates |
-| trust revoked | pairing/auth required, no silent fallback |
-| capability digest changes | capabilities refreshed |
-| unsupported media endpoint | choose next compatible endpoint |
-| corrupt file upload | no published asset |
-| storage full | explicit `STORAGE_FULL` |
+| Scenario | Expected client behavior | Current |
+|---|---|---|
+| clean connect | READY with descriptor/capabilities/state/media | implemented |
+| valid command | generation increments and state reconciles | implemented |
+| stale command generation | explicit `GENERATION_CONFLICT` | implemented |
+| duplicate event | ignored | domain behavior implemented |
+| event generation gap | mark stale and full resync | implemented |
+| event WebSocket loss | RECONNECTING then fresh READY | implemented |
+| command after reconnect | control/event flow continues | implemented |
+| transient HTTP failure | typed retryable error | implemented |
+| response latency | protocol remains correct | implemented |
+| request timeout | typed retryable transport error | implemented |
+| complete server outage | bounded reconnect until endpoint returns | pending |
+| media-only loss | control stays READY, media renegotiates | pending |
+| trust revoked | pairing/auth required, no silent fallback | pending |
+| capability digest changes | capabilities refreshed | pending |
+| unsupported media endpoint | choose next compatible endpoint | pending |
+| corrupt file upload | no published asset | pending |
+| storage full | explicit `STORAGE_FULL` | pending |
 
-## 6. Two mock layers
+## 6. Why both mock layers remain necessary
 
-PRISMA should maintain two complementary test doubles:
+The in-memory connector is optimized for fast logic tests. The network server is optimized for serialization, sockets, HTTP, WebSocket, timeout and reconnect behavior.
 
-### In-memory Mock Connector
-
-Fast Dart unit/integration tests. No sockets, no HTTP, no timing dependency.
-
-### Protocol Mock Server
-
-A later standalone process exposing real HTTP/WebSocket/transfer endpoints. Used to validate the network connector, serialization, reconnect behavior and Android local-network behavior.
-
-Both must use the same canonical test fixtures and expected state transitions.
+Both use the same domain contracts and must converge on the same state transitions. A feature is not considered network-ready merely because the in-memory mock passes.
 
 ## 7. Protected hardware boundary
 
 The Mock Appliance is specifically intended to absorb experimentation that must **not** be performed against the current protected ESP32 baseline.
 
-Only after a behavior passes deterministic mock tests should the equivalent physical adapter be implemented and physically validated.
+Only after behavior passes deterministic mock tests should the equivalent physical adapter be implemented and physically validated.
