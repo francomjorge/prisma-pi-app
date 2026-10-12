@@ -86,6 +86,15 @@ class PrismaEvent {
         'timestamp_ms': timestampMs,
         'payload': payload,
       };
+
+  factory PrismaEvent.fromJson(Map<String, dynamic> json) => PrismaEvent(
+        eventId: json['event_id'] as String,
+        type: json['type'] as String,
+        deviceId: json['device_id'] as String,
+        generation: json['generation'] as int,
+        timestampMs: json['timestamp_ms'] as int,
+        payload: Map<String, dynamic>.from(json['payload'] as Map? ?? const {}),
+      );
 }
 
 class GenerationCursor {
